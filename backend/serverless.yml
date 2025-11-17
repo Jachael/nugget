@@ -1,0 +1,159 @@
+service: nugget
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: eu-west-1
+  stage: ${opt:stage, 'dev'}
+  apiGateway:
+    shouldStartNameWithService: true
+  environment:
+    NUGGET_USERS_TABLE: ${self:service}-users-${self:provider.stage}
+    NUGGET_NUGGETS_TABLE: ${self:service}-nuggets-${self:provider.stage}
+    NUGGET_SESSIONS_TABLE: ${self:service}-sessions-${self:provider.stage}
+    JWT_SECRET: ${env:JWT_SECRET, 'dev-secret-change-in-production'}
+    STAGE: ${self:provider.stage}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - !GetAtt UsersTable.Arn
+            - !GetAtt NuggetsTable.Arn
+            - !GetAtt SessionsTable.Arn
+            - !Sub '${NuggetsTable.Arn}/index/*'
+        - Effect: Allow
+          Action:
+            - bedrock:InvokeModel
+          Resource: 'arn:aws:bedrock:eu-west-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0'
+        - Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource:
+            - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-summariseNugget'
+
+functions:
+  authApple:
+    handler: dist/handlers/authApple.handler
+    events:
+      - httpApi:
+          path: /v1/auth/apple
+          method: post
+
+  createNugget:
+    handler: dist/handlers/createNugget.handler
+    events:
+      - httpApi:
+          path: /v1/nuggets
+          method: post
+
+  listNuggets:
+    handler: dist/handlers/listNuggets.handler
+    events:
+      - httpApi:
+          path: /v1/nuggets
+          method: get
+
+  patchNugget:
+    handler: dist/handlers/patchNugget.handler
+    events:
+      - httpApi:
+          path: /v1/nuggets/{nuggetId}
+          method: patch
+
+  startSession:
+    handler: dist/handlers/startSession.handler
+    events:
+      - httpApi:
+          path: /v1/sessions/start
+          method: post
+
+  completeSession:
+    handler: dist/handlers/completeSession.handler
+    events:
+      - httpApi:
+          path: /v1/sessions/{sessionId}/complete
+          method: post
+
+  summariseNugget:
+    handler: dist/handlers/summariseNugget.handler
+    timeout: 60
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_USERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+
+    NuggetsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_NUGGETS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: nuggetId
+            AttributeType: S
+          - AttributeName: status
+            AttributeType: S
+          - AttributeName: priorityScore
+            AttributeType: N
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: nuggetId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: UserStatusIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: status
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: UserPriorityIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: priorityScore
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    SessionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_SESSIONS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: sessionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: sessionId
+            KeyType: RANGE
+
+plugins:
+  - serverless-offline
