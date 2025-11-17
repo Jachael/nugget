@@ -1,8 +1,18 @@
 import Foundation
 
-struct Session: Codable {
+struct Session: Codable, Identifiable, Hashable {
     let sessionId: String
     let nuggets: [Nugget]
+
+    var id: String { sessionId }
+
+    static func == (lhs: Session, rhs: Session) -> Bool {
+        lhs.sessionId == rhs.sessionId
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(sessionId)
+    }
 }
 
 struct StartSessionRequest: Codable {

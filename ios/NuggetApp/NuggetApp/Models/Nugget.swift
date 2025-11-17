@@ -1,6 +1,6 @@
 import Foundation
 
-struct Nugget: Identifiable, Codable {
+struct Nugget: Identifiable, Codable, Hashable {
     let nuggetId: String
     let sourceUrl: String
     let sourceType: String
