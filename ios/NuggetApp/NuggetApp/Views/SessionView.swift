@@ -25,7 +25,7 @@ struct SessionView: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Exit") {
                     completeSession()
                 }
