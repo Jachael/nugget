@@ -11,14 +11,14 @@ struct SmartProcessView: View {
     let unprocessedCount: Int
     let onSessionCreated: (Session) -> Void
 
-    // Preset queries
+    // Preset queries with gradient colors
     let presetQueries = [
-        ("📱", "Tech This Week", "tech from this week"),
-        ("💼", "Career Insights", "career advice"),
-        ("⚡", "Quick Reads", "quick 5 minute reads"),
-        ("📈", "Finance Updates", "finance and markets"),
-        ("🧠", "Learn Something New", "interesting facts"),
-        ("📅", "Today's Best", "best from today")
+        ("Tech This Week", "tech from this week", [Color.blue, Color.purple]),
+        ("Career Insights", "career advice", [Color.orange, Color.red]),
+        ("Quick Reads", "quick 5 minute reads", [Color.green, Color.teal]),
+        ("Finance Updates", "finance and markets", [Color.purple, Color.pink]),
+        ("Learn Something", "interesting facts", [Color.indigo, Color.blue]),
+        ("Today's Best", "best from today", [Color.yellow, Color.orange])
     ]
 
     var body: some View {
@@ -27,78 +27,78 @@ struct SmartProcessView: View {
                 VStack(spacing: 24) {
                     // Header
                     VStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 48))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.blue, .purple],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                        Text("What do you want to learn?")
+                            .font(.title2.bold())
 
-                        Text("Smart Process")
-                            .font(.title.bold())
-
-                        Text("You have \(unprocessedCount) articles waiting")
+                        Text("\(unprocessedCount) items ready to process")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
-
-                        Text("Tell me what you want to learn")
-                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     .padding(.top, 20)
 
                     // Custom query input
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("What are you interested in?")
-                            .font(.headline)
-
                         HStack {
-                            TextField("e.g., tech news from this week", text: $customQuery)
-                                .textFieldStyle(.plain)
-                                .padding()
-                                .glassEffect(in: .rect(cornerRadius: 12))
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
 
+                            TextField("Search your saved content...", text: $customQuery)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 16))
+
+                            if !customQuery.isEmpty {
+                                Button {
+                                    customQuery = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.secondary.opacity(0.6))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .glassEffect(in: .capsule)
+                        .padding(.horizontal)
+
+                        if !customQuery.isEmpty {
                             Button {
                                 processQuery(customQuery)
                             } label: {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.primary)
+                                HStack {
+                                    Text("Search for \"\(customQuery)\"")
+                                        .font(.system(size: 15))
+                                    Spacer()
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 14))
+                                }
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .glassEffect(in: .rect(cornerRadius: 12))
+                                .padding(.horizontal)
                             }
-                            .disabled(customQuery.isEmpty || isProcessing)
+                            .disabled(isProcessing)
                         }
                     }
-                    .padding(.horizontal)
 
-                    // Or divider
-                    HStack {
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.3))
-                            .frame(height: 1)
-
-                        Text("or choose a preset")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 8)
-
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.3))
-                            .frame(height: 1)
-                    }
-                    .padding(.horizontal)
+                    // Suggestions header
+                    Text("Popular searches")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
 
                     // Preset queries grid
                     LazyVGrid(columns: [
                         GridItem(.flexible()),
                         GridItem(.flexible())
                     ], spacing: 12) {
-                        ForEach(presetQueries, id: \.1) { emoji, title, query in
+                        ForEach(presetQueries, id: \.0) { title, query, colors in
                             PresetQueryCard(
-                                emoji: emoji,
                                 title: title,
+                                gradientColors: colors,
                                 isSelected: selectedPreset == query,
                                 isProcessing: isProcessing && selectedPreset == query
                             ) {
@@ -170,40 +170,49 @@ struct SmartProcessView: View {
 }
 
 struct PresetQueryCard: View {
-    let emoji: String
     let title: String
+    let gradientColors: [Color]
     let isSelected: Bool
     let isProcessing: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) {
-                if isProcessing {
-                    ProgressView()
-                        .frame(height: 40)
-                } else {
-                    Text(emoji)
-                        .font(.system(size: 40))
-                }
+            ZStack {
+                // Gradient background
+                LinearGradient(
+                    gradient: Gradient(colors: gradientColors),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .opacity(isSelected ? 0.8 : 0.6)
 
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                VStack(spacing: 8) {
+                    if isProcessing {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                    } else {
+                        Text(title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                    }
+                }
+                .padding()
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 120)
-            .padding()
-            .glassEffect(
-                isSelected ? .regular : .regular,
-                in: .rect(cornerRadius: 16)
+            .frame(height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(isSelected ? 0.5 : 0.2), lineWidth: isSelected ? 2 : 1)
             )
         }
         .disabled(isProcessing)
+        .scaleEffect(isSelected ? 0.95 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 }
 

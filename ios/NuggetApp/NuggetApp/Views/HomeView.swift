@@ -135,6 +135,33 @@ struct HomeView: View {
                             .foregroundColor(.primary)
                             .padding(.top, 16)
 
+                        // Search bar for Smart Processing
+                        if unprocessedCount > 0 {
+                            Button {
+                                showSmartProcess = true
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.secondary)
+
+                                    Text("Search \(unprocessedCount) saved items...")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.secondary.opacity(0.6))
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .glassEffect(in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 8)
+                        }
+
                         HStack {
                             Text("\(timeBasedGreeting), \(username)")
                                 .font(.subheadline)
@@ -204,53 +231,6 @@ struct HomeView: View {
                                 }
                             }
                         }
-                    }
-
-                    // Smart Process card - show when there are unprocessed nuggets
-                    if unprocessedCount >= 5 {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Smart Process")
-                                .font(.title3.bold())
-                                .padding(.horizontal)
-
-                            Button {
-                                showSmartProcess = true
-                            } label: {
-                                HStack(spacing: 16) {
-                                    // Sparkles icon with gradient
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 32))
-                                        .foregroundStyle(
-                                            LinearGradient(
-                                                colors: [.blue, .purple],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Process with AI")
-                                            .font(.headline)
-                                            .foregroundColor(.primary)
-                                        Text("Tell me what you want to learn from \(unprocessedCount) saved items")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(2)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding()
-                                .glassEffect(.regular, in: .rect(cornerRadius: 16))
-                                .padding(.horizontal)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.bottom, 8)
                     }
 
                     // Dynamic content tiles - always show this section
