@@ -1,17 +1,15 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { extractUserId } from '../lib/auth';
 import { putItem, TableNames } from '../lib/dynamo';
 import { Nugget, CreateNuggetInput, NuggetResponse } from '../lib/models';
 import { computePriorityScore } from '../lib/priority';
-
-const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'eu-west-1' });
+import { scrapeUrl } from '../lib/scraper';
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {
     // Extract and verify user
-    const userId = extractUserId(event);
+    const userId = await extractUserId(event);
     if (!userId) {
       return {
         statusCode: 401,
@@ -44,19 +42,44 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
+    // Reject Twitter/X URLs
+    if (input.sourceType === 'tweet' ||
+        input.sourceUrl.includes('twitter.com/') ||
+        input.sourceUrl.includes('x.com/')) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: 'Twitter/X URLs are not supported. Due to platform restrictions, we cannot extract content from tweets.'
+        }),
+      };
+    }
+
     // Create nugget
     const now = Date.now() / 1000;
     const nuggetId = uuidv4();
+
+    // Scrape content from URL (free, no AI cost)
+    let scrapedContent;
+    try {
+      scrapedContent = await scrapeUrl(input.sourceUrl);
+      console.log('Successfully scraped content from:', input.sourceUrl);
+    } catch (error) {
+      console.error('Failed to scrape URL:', error);
+      // Continue with manual input if scraping fails
+      scrapedContent = null;
+    }
 
     const nugget: Nugget = {
       userId,
       nuggetId,
       sourceUrl: input.sourceUrl,
       sourceType: input.sourceType,
-      rawTitle: input.rawTitle,
-      rawText: input.rawText,
+      rawTitle: scrapedContent?.title || input.rawTitle || 'Untitled',
+      rawText: scrapedContent?.content || input.rawText,
+      rawDescription: scrapedContent?.description,
       status: 'inbox',
-      category: input.category,
+      processingState: 'scraped', // New: indicate it's only been scraped, not AI processed
+      category: scrapedContent?.suggestedCategory || input.category,
       priorityScore: computePriorityScore(now, 0),
       createdAt: now,
       timesReviewed: 0,
@@ -64,18 +87,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     await putItem(TableNames.nuggets, nugget);
 
-    // Trigger async summarisation
-    try {
-      const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
-      await lambda.send(new InvokeCommand({
-        FunctionName: functionName,
-        InvocationType: 'Event', // Async invocation
-        Payload: Buffer.from(JSON.stringify({ userId, nuggetId })),
-      }));
-    } catch (error) {
-      console.error('Failed to trigger summarisation:', error);
-      // Continue anyway - summarisation can be retried manually
-    }
+    // NO automatic AI processing - user will trigger this manually or via session creation
 
     // Return response
     const response: NuggetResponse = {

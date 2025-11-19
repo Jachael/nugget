@@ -53,7 +53,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         appleSub,
         createdAt: now,
         lastActiveDate: today,
-        streak: 0,
+        streak: 1,
         settings: {},
       };
 

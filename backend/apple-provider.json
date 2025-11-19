@@ -1,0 +1,14 @@
+{
+  "ProviderDetails": {
+    "client_id": "com.nugget.app",
+    "team_id": "YOUR_APPLE_TEAM_ID",
+    "key_id": "YOUR_APPLE_KEY_ID",
+    "private_key": "YOUR_APPLE_PRIVATE_KEY",
+    "authorize_scopes": "email name"
+  },
+  "AttributeMapping": {
+    "email": "email",
+    "name": "name",
+    "username": "sub"
+  }
+}

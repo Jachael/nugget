@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { APIGatewayProxyEventV2 } from 'aws-lambda';
+import { verifyCognitoToken, getCognitoUserId } from './cognito';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRY = '7d';
@@ -26,9 +27,9 @@ export function verifyAccessToken(token: string): TokenPayload {
 
 /**
  * Extract userId from Authorization header in API Gateway event
- * Returns null if no valid token is found
+ * Supports both Cognito tokens and legacy JWT tokens
  */
-export function extractUserId(event: APIGatewayProxyEventV2): string | null {
+export async function extractUserId(event: APIGatewayProxyEventV2): Promise<string | null> {
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
   if (!authHeader) {
     return null;
@@ -39,8 +40,21 @@ export function extractUserId(event: APIGatewayProxyEventV2): string | null {
     return null;
   }
 
+  const token = parts[1];
+
+  // Try Cognito verification first
   try {
-    const payload = verifyAccessToken(parts[1]);
+    const cognitoUser = await verifyCognitoToken(token);
+    if (cognitoUser) {
+      return getCognitoUserId(cognitoUser.sub);
+    }
+  } catch (error) {
+    // Not a Cognito token, try legacy JWT
+  }
+
+  // Fall back to legacy JWT verification
+  try {
+    const payload = verifyAccessToken(token);
     return payload.userId;
   } catch (error) {
     console.error('Token verification failed:', error);

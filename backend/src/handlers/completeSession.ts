@@ -11,7 +11,7 @@ interface CompleteSessionRequest {
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {
     // Extract and verify user
-    const userId = extractUserId(event);
+    const userId = await extractUserId(event);
     if (!userId) {
       return {
         statusCode: 401,

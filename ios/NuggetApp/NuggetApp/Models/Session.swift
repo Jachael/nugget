@@ -1,10 +1,11 @@
 import Foundation
 
 struct Session: Codable, Identifiable, Hashable {
-    let sessionId: String
+    let sessionId: String?
     let nuggets: [Nugget]
+    let message: String?
 
-    var id: String { sessionId }
+    var id: String { sessionId ?? UUID().uuidString }
 
     static func == (lhs: Session, rhs: Session) -> Bool {
         lhs.sessionId == rhs.sessionId

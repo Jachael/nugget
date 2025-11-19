@@ -6,7 +6,7 @@ import { Nugget, NuggetResponse } from '../lib/models';
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {
     // Extract and verify user
-    const userId = extractUserId(event);
+    const userId = await extractUserId(event);
     if (!userId) {
       return {
         statusCode: 401,
@@ -49,7 +49,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       nuggetId: nugget.nuggetId,
       sourceUrl: nugget.sourceUrl,
       sourceType: nugget.sourceType,
-      title: nugget.rawTitle || nugget.summary?.substring(0, 50),
+      title: nugget.rawTitle || nugget.summary,
       category: nugget.category,
       status: nugget.status,
       summary: nugget.summary,
@@ -58,6 +58,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       createdAt: new Date(nugget.createdAt * 1000).toISOString(),
       lastReviewedAt: nugget.lastReviewedAt ? new Date(nugget.lastReviewedAt * 1000).toISOString() : undefined,
       timesReviewed: nugget.timesReviewed,
+      // Include grouped nugget fields
+      isGrouped: nugget.isGrouped,
+      sourceNuggetIds: nugget.sourceNuggetIds,
+      sourceUrls: nugget.sourceUrls,
+      individualSummaries: nugget.individualSummaries,
     }));
 
     return {

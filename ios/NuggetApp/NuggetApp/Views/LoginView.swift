@@ -7,12 +7,8 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.blue.opacity(0.6), Color.purple.opacity(0.6)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            Color.clear
+                .ignoresSafeArea()
 
             VStack(spacing: 40) {
                 Spacer()
@@ -20,15 +16,27 @@ struct LoginView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "lightbulb.fill")
                         .font(.system(size: 80))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color.blue, Color.blue.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(
+                            color: Color.blue.opacity(0.3),
+                            radius: 20,
+                            x: 0,
+                            y: 10
+                        )
 
                     Text("Nugget")
                         .font(.system(size: 48, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
 
                     Text("Daily micro-learning from saved content")
                         .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                 }
@@ -41,33 +49,49 @@ struct LoginView: View {
                             .font(.caption)
                             .foregroundColor(.red)
                             .padding()
-                            .background(.white.opacity(0.9))
-                            .cornerRadius(8)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
                     }
 
                     Button {
                         signIn()
                     } label: {
-                        HStack {
+                        HStack(spacing: 10) {
                             if isLoading {
                                 ProgressView()
-                                    .tint(.white)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
                                 Image(systemName: "person.circle.fill")
+                                    .font(.title3)
                                 Text("Sign In (Test Mode)")
+                                    .fontWeight(.semibold)
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(.white)
-                        .foregroundColor(.blue)
-                        .cornerRadius(12)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.blue, Color.blue.opacity(0.8)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
+                        .foregroundColor(.white)
+                        .shadow(
+                            color: Color.blue.opacity(0.3),
+                            radius: 10,
+                            x: 0,
+                            y: 5
+                        )
                     }
                     .disabled(isLoading)
 
                     Text("Using mock authentication for testing")
                         .font(.caption2)
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .padding(.horizontal, 40)
                 .padding(.bottom, 60)

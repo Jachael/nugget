@@ -10,13 +10,23 @@ struct MainTabView: View {
 
             InboxView()
                 .tabItem {
-                    Label("Inbox", systemImage: "tray.fill")
+                    Label("Feed", systemImage: "list.bullet.rectangle.fill")
+                }
+
+            AudioView()
+                .tabItem {
+                    Label("Audio", systemImage: "waveform")
                 }
 
             SettingsView()
                 .tabItem {
-                    Label("Settings", systemImage: "gearshape.fill")
+                    Label("Profile", systemImage: "person.circle.fill")
                 }
         }
     }
+}
+
+#Preview {
+    MainTabView()
+        .environmentObject(AuthService())
 }

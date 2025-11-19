@@ -14,8 +14,53 @@ final class AuthService: ObservableObject {
            let userId = KeychainManager.shared.getUserId() {
             // Token exists, user is authenticated
             isAuthenticated = true
-            // Note: We don't store streak in keychain, it's fetched fresh on auth
+
+            // Fetch user profile to get streak
+            Task {
+                do {
+                    let userProfile = try await fetchUserProfile()
+                    await MainActor.run {
+                        self.currentUser = User(
+                            userId: userId,
+                            accessToken: token,
+                            streak: userProfile.streak
+                        )
+                    }
+                } catch {
+                    print("Failed to fetch user profile: \(error)")
+                    // Still authenticated, just no streak available
+                    await MainActor.run {
+                        self.currentUser = User(
+                            userId: userId,
+                            accessToken: token,
+                            streak: 0
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    struct UserProfileResponse: Codable {
+        let userId: String
+        let streak: Int
+        let lastActiveDate: String
+    }
+
+    private func fetchUserProfile() async throws -> AuthResponse {
+        let profile = try await APIClient.shared.send(
+            path: "/me",
+            method: "GET",
+            body: Optional<String>.none,
+            requiresAuth: true,
+            responseType: UserProfileResponse.self
+        )
+
+        return AuthResponse(
+            userId: profile.userId,
+            accessToken: "", // Not needed for this use case
+            streak: profile.streak
+        )
     }
 
     func signInWithApple(idToken: String) async throws {
@@ -24,7 +69,7 @@ final class AuthService: ObservableObject {
         }
 
         let authResponse = try await APIClient.shared.send(
-            path: "/auth/apple",
+            path: CognitoConfig.authEndpoint,
             method: "POST",
             body: AuthRequest(idToken: idToken),
             requiresAuth: false,

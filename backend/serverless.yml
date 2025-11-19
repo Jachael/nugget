@@ -15,6 +15,9 @@ provider:
     NUGGET_SESSIONS_TABLE: ${self:service}-sessions-${self:provider.stage}
     JWT_SECRET: ${env:JWT_SECRET, 'dev-secret-change-in-production'}
     STAGE: ${self:provider.stage}
+    COGNITO_USER_POOL_ID: eu-west-1_1zILS9mOj
+    COGNITO_CLIENT_ID: 6roa95ol200brl6tsrlnkckpd6
+    USE_COGNITO: 'true'
   iam:
     role:
       statements:
@@ -34,7 +37,9 @@ provider:
         - Effect: Allow
           Action:
             - bedrock:InvokeModel
-          Resource: 'arn:aws:bedrock:eu-west-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0'
+          Resource:
+            - 'arn:aws:bedrock:*::foundation-model/*'
+            - 'arn:aws:bedrock:*:*:inference-profile/*'
         - Effect: Allow
           Action:
             - lambda:InvokeFunction
@@ -48,6 +53,20 @@ functions:
       - httpApi:
           path: /v1/auth/apple
           method: post
+
+  authCognito:
+    handler: dist/handlers/authCognito.handler
+    events:
+      - httpApi:
+          path: /v1/auth/cognito
+          method: post
+
+  getMe:
+    handler: dist/handlers/getMe.handler
+    events:
+      - httpApi:
+          path: /v1/me
+          method: get
 
   createNugget:
     handler: dist/handlers/createNugget.handler
@@ -70,6 +89,13 @@ functions:
           path: /v1/nuggets/{nuggetId}
           method: patch
 
+  deleteNugget:
+    handler: dist/handlers/deleteNugget.handler
+    events:
+      - httpApi:
+          path: /v1/nuggets/{nuggetId}
+          method: delete
+
   startSession:
     handler: dist/handlers/startSession.handler
     events:
@@ -77,11 +103,41 @@ functions:
           path: /v1/sessions/start
           method: post
 
+  createSmartSession:
+    handler: dist/handlers/createSmartSession.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/sessions/smart
+          method: post
+
   completeSession:
     handler: dist/handlers/completeSession.handler
     events:
       - httpApi:
           path: /v1/sessions/{sessionId}/complete
+          method: post
+
+  getPreferences:
+    handler: dist/handlers/getPreferences.handler
+    events:
+      - httpApi:
+          path: /v1/preferences
+          method: get
+
+  updatePreferences:
+    handler: dist/handlers/updatePreferences.handler
+    events:
+      - httpApi:
+          path: /v1/preferences
+          method: put
+
+  processNuggets:
+    handler: dist/handlers/processNuggets.handler
+    timeout: 120
+    events:
+      - httpApi:
+          path: /v1/nuggets/process
           method: post
 
   summariseNugget:

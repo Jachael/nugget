@@ -1,5 +1,13 @@
 import Foundation
 
+struct IndividualSummary: Codable, Hashable {
+    let nuggetId: String
+    let title: String
+    let summary: String
+    let keyPoints: [String]
+    let sourceUrl: String
+}
+
 struct Nugget: Identifiable, Codable, Hashable {
     let nuggetId: String
     let sourceUrl: String
@@ -13,6 +21,10 @@ struct Nugget: Identifiable, Codable, Hashable {
     let createdAt: Date
     var lastReviewedAt: Date?
     var timesReviewed: Int
+    var isGrouped: Bool?
+    var sourceUrls: [String]?
+    var sourceNuggetIds: [String]?
+    var individualSummaries: [IndividualSummary]?
 
     var id: String { nuggetId }
 
@@ -29,6 +41,10 @@ struct Nugget: Identifiable, Codable, Hashable {
         case createdAt
         case lastReviewedAt
         case timesReviewed
+        case isGrouped
+        case sourceUrls
+        case sourceNuggetIds
+        case individualSummaries
     }
 
     init(from decoder: Decoder) throws {
@@ -43,6 +59,10 @@ struct Nugget: Identifiable, Codable, Hashable {
         keyPoints = try container.decodeIfPresent([String].self, forKey: .keyPoints)
         question = try container.decodeIfPresent(String.self, forKey: .question)
         timesReviewed = try container.decode(Int.self, forKey: .timesReviewed)
+        isGrouped = try container.decodeIfPresent(Bool.self, forKey: .isGrouped)
+        sourceUrls = try container.decodeIfPresent([String].self, forKey: .sourceUrls)
+        sourceNuggetIds = try container.decodeIfPresent([String].self, forKey: .sourceNuggetIds)
+        individualSummaries = try container.decodeIfPresent([IndividualSummary].self, forKey: .individualSummaries)
 
         let createdAtString = try container.decode(String.self, forKey: .createdAt)
         let lastReviewedAtString = try container.decodeIfPresent(String.self, forKey: .lastReviewedAt)

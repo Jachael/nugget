@@ -5,6 +5,7 @@ import {
   PutCommand,
   QueryCommand,
   UpdateCommand,
+  DeleteCommand,
   QueryCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 
@@ -58,4 +59,11 @@ export async function updateItem(
 export async function queryItems<T>(params: QueryCommandInput): Promise<T[]> {
   const result = await dynamoDb.send(new QueryCommand(params));
   return (result.Items as T[]) || [];
+}
+
+export async function deleteItem(tableName: string, key: Record<string, unknown>): Promise<void> {
+  await dynamoDb.send(new DeleteCommand({
+    TableName: tableName,
+    Key: key,
+  }));
 }

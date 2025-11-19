@@ -1,0 +1,37 @@
+{
+  "PoolName": "nugget-user-pool",
+  "Policies": {
+    "PasswordPolicy": {
+      "MinimumLength": 8,
+      "RequireUppercase": false,
+      "RequireLowercase": false,
+      "RequireNumbers": false,
+      "RequireSymbols": false
+    }
+  },
+  "AutoVerifiedAttributes": ["email"],
+  "UsernameAttributes": ["email"],
+  "MfaConfiguration": "OFF",
+  "AccountRecoverySetting": {
+    "RecoveryMechanisms": [
+      {
+        "Priority": 1,
+        "Name": "verified_email"
+      }
+    ]
+  },
+  "Schema": [
+    {
+      "Name": "email",
+      "AttributeDataType": "String",
+      "Required": true,
+      "Mutable": true
+    },
+    {
+      "Name": "name",
+      "AttributeDataType": "String",
+      "Required": false,
+      "Mutable": true
+    }
+  ]
+}
