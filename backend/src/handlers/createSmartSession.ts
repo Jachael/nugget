@@ -210,23 +210,36 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     await Promise.allSettled(processPromises);
 
-    // Transform to response format with processed summaries
+    // Group the nuggets into a combined session
+    // This creates a single "super nugget" that contains all the matched articles
+    const groupedNuggetId = `group-${sessionId}`;
     const response: SessionResponse = {
       sessionId: session.sessionId,
-      nuggets: nuggetsToProcess.map(nugget => ({
-        nuggetId: nugget.nuggetId,
-        sourceUrl: nugget.sourceUrl,
-        sourceType: nugget.sourceType,
-        title: nugget.rawTitle,
-        category: nugget.category,
-        status: nugget.status,
-        createdAt: new Date(nugget.createdAt * 1000).toISOString(),
-        timesReviewed: nugget.timesReviewed,
-        // These will be populated by the summarization Lambda
-        summary: 'Processing...',
+      nuggets: [{
+        nuggetId: groupedNuggetId,
+        sourceUrl: '', // No single source for grouped nuggets
+        sourceType: 'grouped',
+        title: `Smart Session: ${request.query}`,
+        category: parsedQuery.category || 'mixed',
+        status: 'processing',
+        createdAt: new Date().toISOString(),
+        timesReviewed: 0,
+        // Mark as grouped and include all source URLs
+        isGrouped: true,
+        sourceUrls: nuggetsToProcess.map(n => n.sourceUrl),
+        // These will be populated by the summarization
+        summary: `Processing ${nuggetsToProcess.length} articles matching "${request.query}"...`,
         keyPoints: [],
         question: 'Processing...',
-      })),
+        // Include individual summaries for each article
+        individualSummaries: nuggetsToProcess.map(nugget => ({
+          nuggetId: nugget.nuggetId,
+          title: nugget.rawTitle || 'Untitled',
+          sourceUrl: nugget.sourceUrl,
+          summary: 'Processing...',
+          keyPoints: [],
+        })),
+      }],
     };
 
     return {

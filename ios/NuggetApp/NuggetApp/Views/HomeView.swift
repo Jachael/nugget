@@ -135,33 +135,6 @@ struct HomeView: View {
                             .foregroundColor(.primary)
                             .padding(.top, 16)
 
-                        // Search bar for Smart Processing
-                        if unprocessedCount > 0 {
-                            Button {
-                                showSmartProcess = true
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.secondary)
-
-                                    Text("Search \(unprocessedCount) saved items...")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(.secondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.secondary.opacity(0.6))
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .glassEffect(in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 8)
-                        }
-
                         HStack {
                             Text("\(timeBasedGreeting), \(username)")
                                 .font(.subheadline)
@@ -190,6 +163,31 @@ struct HomeView: View {
                             .buttonStyle(GlassButtonStyle())
                         }
                         .padding(.top, -4)
+
+                        // Search bar for Smart Processing - Always visible
+                        Button {
+                            showSmartProcess = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.secondary)
+
+                                Text(unprocessedCount > 0 ? "Search \(unprocessedCount) saved items..." : "Search your library...")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .glassEffect(in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 8)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
@@ -313,36 +311,6 @@ struct HomeView: View {
                             .frame(height: CGFloat(recentNuggets.count) * 110)
                             .scrollDisabled(true)
                         }
-
-                        // Quick Actions section
-                        Text("Quick Actions")
-                            .font(.title3.bold())
-                            .padding(.horizontal)
-                            .padding(.top, tiles.isEmpty ? 0 : 16)
-
-                        LazyVGrid(columns: [
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16)
-                        ], spacing: 16) {
-                            // Browse Feed
-                            NavigationLink(destination: InboxView()) {
-                                QuickActionTile(
-                                    title: "Browse Feed",
-                                    subtitle: "\(nuggets.count) articles",
-                                    icon: "list.bullet.rectangle.fill",
-                                    action: nil
-                                )
-                            }
-
-                            // Total Categories
-                            QuickActionTile(
-                                title: "Categories",
-                                subtitle: "\(Set(nuggets.compactMap { $0.category }).count) topics",
-                                icon: "tag.fill",
-                                action: nil
-                            )
-                        }
-                        .padding(.horizontal)
                     }
 
                     Spacer(minLength: 40)
@@ -584,40 +552,6 @@ struct ContentTileView: View {
     }
 }
 
-struct QuickActionTile: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let action: (() -> Void)?
-
-    var body: some View {
-        Button {
-            action?()
-        } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(.title2)
-                        .foregroundColor(.primary.opacity(0.7))
-                    Spacer()
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(18)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
-        .disabled(action == nil)
-    }
-}
 
 struct RecentNuggetRow: View {
     let nugget: Nugget

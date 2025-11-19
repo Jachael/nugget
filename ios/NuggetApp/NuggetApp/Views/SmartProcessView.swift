@@ -24,17 +24,17 @@ struct SmartProcessView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
+                VStack(spacing: 20) {
+                    // Compact Header
+                    VStack(spacing: 4) {
                         Text("What do you want to learn?")
-                            .font(.title2.bold())
+                            .font(.headline)
 
-                        Text("\(unprocessedCount) items ready to process")
-                            .font(.subheadline)
+                        Text("\(unprocessedCount) items ready")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.top, 20)
+                    .padding(.top, 12)
 
                     // Custom query input
                     VStack(alignment: .leading, spacing: 12) {
@@ -85,16 +85,17 @@ struct SmartProcessView: View {
 
                     // Suggestions header
                     Text("Popular searches")
-                        .font(.headline)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal)
-                        .padding(.top, 8)
 
-                    // Preset queries grid
+                    // Preset queries grid - 3 columns for compact layout
                     LazyVGrid(columns: [
                         GridItem(.flexible()),
+                        GridItem(.flexible()),
                         GridItem(.flexible())
-                    ], spacing: 12) {
+                    ], spacing: 10) {
                         ForEach(presetQueries, id: \.0) { title, query, colors in
                             PresetQueryCard(
                                 title: title,
@@ -123,16 +124,20 @@ struct SmartProcessView: View {
                         .padding(.horizontal)
                     }
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, 20)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("Done") {
                         dismiss()
                     }
+                    .fontWeight(.medium)
                 }
             }
+            .presentationDetents([.fraction(0.65)])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(20)
         }
         .sheet(item: $session) { session in
             SessionView(session: session)
@@ -148,12 +153,13 @@ struct SmartProcessView: View {
                 let newSession = try await NuggetService.shared.createSmartSession(query: query)
                 await MainActor.run {
                     isProcessing = false
-                    session = newSession
-                    onSessionCreated(newSession)
 
-                    // Dismiss after a short delay to show the session
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        dismiss()
+                    // Dismiss the sheet first
+                    dismiss()
+
+                    // Then navigate to the session after a brief delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        onSessionCreated(newSession)
                     }
                 }
             } catch {
@@ -178,41 +184,41 @@ struct PresetQueryCard: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                // Gradient background
-                LinearGradient(
-                    gradient: Gradient(colors: gradientColors),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .opacity(isSelected ? 0.8 : 0.6)
-
-                VStack(spacing: 8) {
-                    if isProcessing {
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(0.8)
-                    } else {
-                        Text(title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
-                    }
+            VStack(spacing: 0) {
+                if isProcessing {
+                    ProgressView()
+                        .tint(.secondary)
+                        .scaleEffect(0.7)
+                        .frame(height: 60)
+                        .frame(maxWidth: .infinity)
+                        .glassEffect(in: .rect(cornerRadius: 12))
+                } else {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                        .padding(.vertical, 20)
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 60)
+                        .glassEffect(in: .rect(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(
+                                    LinearGradient(gradient: Gradient(colors: gradientColors),
+                                                 startPoint: .topLeading,
+                                                 endPoint: .bottomTrailing),
+                                    lineWidth: isSelected ? 2 : 0
+                                )
+                        )
                 }
-                .padding()
             }
-            .frame(height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(isSelected ? 0.5 : 0.2), lineWidth: isSelected ? 2 : 1)
-            )
         }
         .disabled(isProcessing)
-        .scaleEffect(isSelected ? 0.95 : 1.0)
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .scaleEffect(isSelected ? 0.97 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isSelected)
     }
 }
 
