@@ -1,9 +1,8 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { extractUserId } from '../lib/auth';
-import { queryItems, putItem, TableNames } from '../lib/dynamo';
+import { queryItems, putItem, updateItem, TableNames } from '../lib/dynamo';
 import { Nugget, Session, SessionResponse } from '../lib/models';
-import { invokeSummariseNugget } from '../lib/invoke';
 
 interface SmartSessionRequest {
   query: string; // Natural language query like "tech from this week"
@@ -203,42 +202,114 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     await putItem(TableNames.sessions, session);
 
-    // Process nuggets in parallel
-    const processPromises = nuggetsToProcess.map(nugget =>
-      invokeSummariseNugget(nugget.nuggetId, userId)
+    // DON'T process individual nuggets - we want only the grouped nugget
+    // Mark the original nuggets as being part of a session so they don't show as unprocessed
+    const updatePromises = nuggetsToProcess.map(nugget =>
+      updateItem(
+        TableNames.nuggets,
+        { userId, nuggetId: nugget.nuggetId },
+        {
+          status: 'archived', // Archive them since they're now part of a grouped session
+          sessionId: sessionId
+        }
+      )
     );
 
-    await Promise.allSettled(processPromises);
+    await Promise.all(updatePromises);
+
+    // For now, just use the nuggets as-is without processing
+    const validUpdatedNuggets = nuggetsToProcess;
 
     // Group the nuggets into a combined session
     // This creates a single "super nugget" that contains all the matched articles
     const groupedNuggetId = `group-${sessionId}`;
+
+    // Generate a better title for the grouped nugget
+    let groupTitle = request.query;
+    if (parsedQuery.category && parsedQuery.timeFilter) {
+      const timeLabel = parsedQuery.timeFilter === 'today' ? "Today's" :
+                       parsedQuery.timeFilter === 'week' ? 'This Week in' :
+                       'This Month in';
+      groupTitle = `${timeLabel} ${parsedQuery.category.charAt(0).toUpperCase() + parsedQuery.category.slice(1)}`;
+    }
+
+    // Create and save the grouped nugget to the database immediately
+    const groupedNugget: Nugget = {
+      userId,
+      nuggetId: groupedNuggetId,
+      sourceUrl: '', // No single source for grouped nuggets
+      sourceType: 'other',
+      title: groupTitle,
+      rawTitle: groupTitle,
+      category: parsedQuery.category || 'mixed',
+      status: 'inbox', // Mark as inbox since it's ready to be processed
+      createdAt: now,
+      priorityScore: 100, // High priority for grouped nuggets
+      timesReviewed: 0,
+      processingState: 'ready', // Mark as ready since it's a grouped nugget
+      // Mark as grouped and include all source URLs
+      isGrouped: true,
+      sourceUrls: validUpdatedNuggets.map(n => n.sourceUrl),
+      // Create a richer, more detailed summary
+      summary: `You have ${validUpdatedNuggets.length} curated articles matching "${request.query}". This collection covers ${
+        parsedQuery.category ? `the latest in ${parsedQuery.category}` : 'diverse topics'
+      }${parsedQuery.timeFilter ? ` from ${parsedQuery.timeFilter === 'today' ? 'today' :
+        parsedQuery.timeFilter === 'week' ? 'this week' : 'this month'}` : ''
+      }. Here's your personalized digest with key insights, trends, and actionable takeaways from each article.`,
+      keyPoints: validUpdatedNuggets.map(n => {
+        const title = n.rawTitle || 'Untitled';
+        const description = n.rawDescription ? ` - ${n.rawDescription.substring(0, 100)}...` : '';
+        return `${title}${description}`;
+      }),
+      question: `Which aspect of ${parsedQuery.category || 'these topics'} interests you most?`,
+      // Include individual summaries for each article (even if they're not processed yet)
+      individualSummaries: validUpdatedNuggets.map(nugget => {
+        const title = nugget.title || nugget.rawTitle || 'Untitled';
+        const description = nugget.rawDescription || '';
+        let summary = nugget.summary;
+
+        // Create a more detailed summary if one doesn't exist
+        if (!summary && description) {
+          summary = `${description.substring(0, 200)}${description.length > 200 ? '...' : ''}`;
+        } else if (!summary) {
+          summary = `Article: "${title}" - Ready for in-depth analysis`;
+        }
+
+        return {
+          nuggetId: nugget.nuggetId,
+          title: title,
+          sourceUrl: nugget.sourceUrl,
+          summary: summary,
+          keyPoints: nugget.keyPoints || (description ? [
+            `Source: ${nugget.sourceUrl.includes('linkedin') ? 'LinkedIn' :
+                     nugget.sourceUrl.includes('twitter') ? 'Twitter/X' :
+                     new URL(nugget.sourceUrl).hostname.replace('www.', '')}`,
+            `Topic: ${nugget.category || 'General'}`
+          ] : []),
+        };
+      }),
+    };
+
+    // Save the grouped nugget to the database immediately
+    await putItem(TableNames.nuggets, groupedNugget);
+
     const response: SessionResponse = {
       sessionId: session.sessionId,
       nuggets: [{
-        nuggetId: groupedNuggetId,
-        sourceUrl: '', // No single source for grouped nuggets
+        nuggetId: groupedNugget.nuggetId,
+        sourceUrl: groupedNugget.sourceUrl,
         sourceType: 'grouped',
-        title: `Smart Session: ${request.query}`,
-        category: parsedQuery.category || 'mixed',
-        status: 'processing',
-        createdAt: new Date().toISOString(),
+        title: groupedNugget.title || '',
+        category: groupedNugget.category,
+        status: 'ready',
+        createdAt: new Date(groupedNugget.createdAt * 1000).toISOString(),
         timesReviewed: 0,
-        // Mark as grouped and include all source URLs
         isGrouped: true,
-        sourceUrls: nuggetsToProcess.map(n => n.sourceUrl),
-        // These will be populated by the summarization
-        summary: `Processing ${nuggetsToProcess.length} articles matching "${request.query}"...`,
-        keyPoints: [],
-        question: 'Processing...',
-        // Include individual summaries for each article
-        individualSummaries: nuggetsToProcess.map(nugget => ({
-          nuggetId: nugget.nuggetId,
-          title: nugget.rawTitle || 'Untitled',
-          sourceUrl: nugget.sourceUrl,
-          summary: 'Processing...',
-          keyPoints: [],
-        })),
+        sourceUrls: groupedNugget.sourceUrls,
+        summary: groupedNugget.summary,
+        keyPoints: groupedNugget.keyPoints,
+        question: groupedNugget.question,
+        individualSummaries: groupedNugget.individualSummaries,
       }],
     };
 

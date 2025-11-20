@@ -15,6 +15,7 @@ struct Nugget: Identifiable, Codable, Hashable {
     var title: String?
     var category: String?
     var status: String
+    var processingState: String? // "scraped", "processing", "ready"
     var summary: String?
     var keyPoints: [String]?
     var question: String?
@@ -28,6 +29,11 @@ struct Nugget: Identifiable, Codable, Hashable {
 
     var id: String { nuggetId }
 
+    // Computed property to check if nugget is ready to view
+    var isReady: Bool {
+        processingState == "ready" || processingState == nil
+    }
+
     enum CodingKeys: String, CodingKey {
         case nuggetId
         case sourceUrl
@@ -35,6 +41,7 @@ struct Nugget: Identifiable, Codable, Hashable {
         case title
         case category
         case status
+        case processingState
         case summary
         case keyPoints
         case question
@@ -55,6 +62,7 @@ struct Nugget: Identifiable, Codable, Hashable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         category = try container.decodeIfPresent(String.self, forKey: .category)
         status = try container.decode(String.self, forKey: .status)
+        processingState = try container.decodeIfPresent(String.self, forKey: .processingState)
         summary = try container.decodeIfPresent(String.self, forKey: .summary)
         keyPoints = try container.decodeIfPresent([String].self, forKey: .keyPoints)
         question = try container.decodeIfPresent(String.self, forKey: .question)
@@ -68,9 +76,24 @@ struct Nugget: Identifiable, Codable, Hashable {
         let lastReviewedAtString = try container.decodeIfPresent(String.self, forKey: .lastReviewedAt)
 
         let formatter = ISO8601DateFormatter()
-        createdAt = formatter.date(from: createdAtString) ?? Date()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // Try parsing with fractional seconds first, then without
+        if let date = formatter.date(from: createdAtString) {
+            createdAt = date
+        } else {
+            formatter.formatOptions = [.withInternetDateTime]
+            createdAt = formatter.date(from: createdAtString) ?? Date()
+        }
+
         if let lastReviewedAtString = lastReviewedAtString {
-            lastReviewedAt = formatter.date(from: lastReviewedAtString)
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: lastReviewedAtString) {
+                lastReviewedAt = date
+            } else {
+                formatter.formatOptions = [.withInternetDateTime]
+                lastReviewedAt = formatter.date(from: lastReviewedAtString)
+            }
         }
     }
 }

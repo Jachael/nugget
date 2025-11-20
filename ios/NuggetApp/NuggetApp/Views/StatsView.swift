@@ -127,7 +127,7 @@ struct StatsView: View {
         VStack(spacing: 16) {
             // Full-width streak card
             HStack(spacing: 16) {
-                Image(systemName: "flame.fill")
+                Image(systemName: "square.stack.3d.up.fill")
                     .font(.system(size: 36))
                     .foregroundColor(.orange)
                     .frame(width: 50)

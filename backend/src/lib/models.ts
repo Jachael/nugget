@@ -9,9 +9,13 @@ export interface UserPreferences {
 export interface User {
   userId: string;
   appleSub?: string;
+  googleSub?: string;
   cognitoSub?: string;
   email?: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  picture?: string;
   createdAt: number;
   lastActiveDate: string;
   streak: number;
@@ -26,6 +30,7 @@ export interface Nugget {
   sourceUrl: string;
   sourceType: 'url' | 'tweet' | 'linkedin' | 'youtube' | 'other';
   rawTitle?: string;
+  title?: string; // Processed/cleaned title
   rawText?: string;
   rawDescription?: string; // Meta description from scraping
   status: 'inbox' | 'completed' | 'archived';
@@ -59,6 +64,12 @@ export interface Session {
   completedAt?: number;
   nuggetIds: string[];
   completedCount: number;
+  synthesis?: {
+    summary: string;
+    keyPoints: string[];
+    question: string;
+    generatedAt: number;
+  };
 }
 
 export interface CreateNuggetInput {
@@ -78,6 +89,7 @@ export interface AuthResponse {
   userId: string;
   accessToken: string;
   streak: number;
+  firstName?: string;
 }
 
 export interface NuggetResponse {

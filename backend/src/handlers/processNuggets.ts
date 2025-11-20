@@ -1,7 +1,8 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { v4 as uuidv4 } from 'uuid';
 import { extractUserId } from '../lib/auth';
-import { getItem, queryItems, TableNames } from '../lib/dynamo';
+import { getItem, queryItems, putItem, TableNames } from '../lib/dynamo';
 import { User, Nugget } from '../lib/models';
 
 const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'eu-west-1' });
@@ -60,8 +61,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         },
       });
 
+      console.log(`Found ${allNuggets.length} nuggets with status=inbox for user ${userId}`);
+      console.log('Processing states:', allNuggets.map(n => `${n.nuggetId}: ${n.processingState}`));
+
       // Filter to only scraped (not yet AI processed) nuggets
       nuggetsToProcess = allNuggets.filter(n => n.processingState === 'scraped');
+
+      console.log(`After filtering, found ${nuggetsToProcess.length} nuggets in 'scraped' state`);
 
       // Note: Daily limit enforcement removed here because when users explicitly
       // tap "Process" button, they want to process all available items together.
@@ -79,45 +85,85 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
-    // Group nuggets by category or process all together if no categories
-    // This allows the AI to synthesize related content
-    const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
-
     // Process nuggets as a group if there are 2 or more
     if (nuggetsToProcess.length >= 2) {
-      // Step 1: First summarize each nugget individually (async)
-      console.log(`Starting individual summarization for ${nuggetsToProcess.length} nuggets...`);
-      const individualSummarizePromises = nuggetsToProcess.map(nugget =>
-        lambda.send(new InvokeCommand({
+      const now = Date.now() / 1000;
+      const groupedNuggetId = `group-${uuidv4()}`;
+
+      // Detect common categories
+      const categoryCount: Record<string, number> = {};
+      nuggetsToProcess.forEach(n => {
+        if (n.category) {
+          categoryCount[n.category] = (categoryCount[n.category] || 0) + 1;
+        }
+      });
+      const dominantCategory = Object.keys(categoryCount).length > 0
+        ? Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0][0]
+        : 'mixed';
+
+      // Create grouped nugget with minimal placeholder content
+      // AI will fill in the real summary, keyPoints, etc.
+      const groupedNugget: Nugget = {
+        userId,
+        nuggetId: groupedNuggetId,
+        sourceUrl: nuggetsToProcess[0].sourceUrl,
+        sourceType: 'other',
+        title: `Processing ${nuggetsToProcess.length} articles...`,
+        rawTitle: `Processing ${nuggetsToProcess.length} articles...`,
+        category: dominantCategory,
+        status: 'inbox',
+        createdAt: now,
+        priorityScore: 100,
+        timesReviewed: 0,
+        processingState: 'processing', // Will be updated to 'ready' by AI
+        isGrouped: true,
+        sourceUrls: nuggetsToProcess.map(n => n.sourceUrl),
+        sourceNuggetIds: nuggetsToProcess.map(n => n.nuggetId),
+        summary: 'AI is analyzing and summarizing your articles...',
+        keyPoints: ['Processing in progress'],
+        question: 'Processing...',
+      };
+
+      // Save the grouped nugget
+      await putItem(TableNames.nuggets, groupedNugget);
+
+      // Trigger background processing to enhance summaries with AI
+      const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
+      console.log(`Invoking ${functionName} for grouped nugget ${groupedNuggetId} with ${nuggetsToProcess.length} articles`);
+      try {
+        const invokeResult = await lambda.send(new InvokeCommand({
           FunctionName: functionName,
-          InvocationType: 'Event', // Async invocation
+          InvocationType: 'Event',
           Payload: Buffer.from(JSON.stringify({
             userId,
-            nuggetId: nugget.nuggetId,
-            groupAfterSummarize: true, // Signal to trigger grouping after
-            groupNuggetIds: nuggetsToProcess.map(n => n.nuggetId)
+            nuggetIds: nuggetsToProcess.map(n => n.nuggetId),
+            grouped: true,
+            groupedNuggetId, // Pass the ID so AI can update it
           })),
-        }))
-      );
-
-      await Promise.all(individualSummarizePromises);
-      console.log(`Individual summarization requests sent. Grouping will happen automatically.`);
+        }));
+        console.log('Lambda invocation result:', invokeResult);
+      } catch (err) {
+        console.error('Background processing invocation failed:', err);
+        // Don't fail the request - the grouped nugget is already created
+      }
 
       return {
         statusCode: 200,
         body: JSON.stringify({
-          message: `Started processing ${nuggetsToProcess.length} nugget(s). They will be grouped once individual summaries are complete.`,
+          message: `Created digest of ${nuggetsToProcess.length} articles`,
           processedCount: nuggetsToProcess.length,
-          nuggetIds: nuggetsToProcess.map(n => n.nuggetId),
+          nuggetIds: [groupedNuggetId],
+          groupedNuggetId,
         }),
       };
     }
 
     // If only one nugget, process individually
+    const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
     const invocationPromises = nuggetsToProcess.map(nugget =>
       lambda.send(new InvokeCommand({
         FunctionName: functionName,
-        InvocationType: 'Event', // Async invocation
+        InvocationType: 'Event',
         Payload: Buffer.from(JSON.stringify({ userId, nuggetId: nugget.nuggetId })),
       }))
     );

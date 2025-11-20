@@ -26,16 +26,19 @@ struct HomeView: View {
     @State private var showTestWebView = false
     @State private var showStats = false
     @State private var errorTimer: Timer?
-    @State private var nuggetToDelete: Nugget?
-    @State private var showDeleteConfirmation = false
     @State private var showSmartProcess = false
+    @State private var lastLoadTime = Date.distantPast
+    @State private var refreshTask: Task<Void, Never>?
 
     var username: String {
-        authService.currentUser?.userId.prefix(8).description ?? "friend"
+        if let firstName = authService.currentUser?.firstName, !firstName.isEmpty {
+            return firstName
+        }
+        return "friend"
     }
 
     var unprocessedCount: Int {
-        nuggets.filter { $0.summary == nil }.count
+        nuggets.filter { $0.summary == nil && $0.isReady }.count
     }
 
     var timeBasedGreeting: String {
@@ -55,7 +58,7 @@ struct HomeView: View {
         // This week tile
         let thisWeekCount = nuggets.filter { nugget in
             guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else { return false }
-            return nugget.createdAt >= weekAgo && nugget.summary == nil
+            return nugget.createdAt >= weekAgo && nugget.summary == nil && nugget.isReady
         }.count
 
         if thisWeekCount > 0 {
@@ -69,7 +72,7 @@ struct HomeView: View {
         }
 
         // Today tile
-        let todayCount = nuggets.filter { Calendar.current.isDateInToday($0.createdAt) && $0.summary == nil }.count
+        let todayCount = nuggets.filter { Calendar.current.isDateInToday($0.createdAt) && $0.summary == nil && $0.isReady }.count
         if todayCount > 0 {
             result.append(ContentTile(
                 title: "Today",
@@ -81,7 +84,7 @@ struct HomeView: View {
         }
 
         // Yesterday tile
-        let yesterdayCount = nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil }.count
+        let yesterdayCount = nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil && $0.isReady }.count
         if yesterdayCount > 0 {
             result.append(ContentTile(
                 title: "Yesterday",
@@ -93,7 +96,7 @@ struct HomeView: View {
         }
 
         // Category tiles - get top categories
-        let categories = Dictionary(grouping: nuggets.filter { $0.summary == nil }, by: { $0.category ?? "general" })
+        let categories = Dictionary(grouping: nuggets.filter { $0.summary == nil && $0.isReady }, by: { $0.category ?? "general" })
         let topCategories = categories.sorted { $0.value.count > $1.value.count }.prefix(3)
 
         for (category, items) in topCategories {
@@ -126,30 +129,34 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header with greeting and streak
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Nugget")
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundColor(.primary)
-                            .padding(.top, 16)
+            VStack(spacing: 0) {
+                // Fixed Header (not affected by pull-to-refresh)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Nugget \(SparkSymbol.spark)")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(.primary)
 
-                        HStack {
-                            Text("\(timeBasedGreeting), \(username)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                    HStack {
+                        Text("\(timeBasedGreeting), \(username)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
 
-                            Spacer()
+                        Spacer()
 
-                            // Clickable streak on the right - Liquid Glass
-                            Button {
-                                showStats = true
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "flame.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.orange)
+                        // Clickable streak on the right - restored original design
+                        Button {
+                            showStats = true
+                            HapticFeedback.selection()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "square.stack.3d.up.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.orange)
+                                if (authService.currentUser?.streak ?? 0) == 0 {
+                                    Text("0 day streak")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                } else {
                                     Text("\(authService.currentUser?.streak ?? 0)")
                                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                                         .foregroundColor(.primary)
@@ -157,40 +164,50 @@ struct HomeView: View {
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
                             }
-                            .buttonStyle(GlassButtonStyle())
-                        }
-                        .padding(.top, -4)
-
-                        // Search bar for Smart Processing - Always visible
-                        Button {
-                            showSmartProcess = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.secondary)
-
-                                Text(unprocessedCount > 0 ? "Search \(unprocessedCount) saved items..." : "Search your library...")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.secondary.opacity(0.6))
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .glassEffect(in: .capsule)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .glassEffect(.regular.interactive(), in: .capsule)
                         }
                         .buttonStyle(.plain)
-                        .padding(.top, 8)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+
+                    // Search bar for Smart Processing - Always visible
+                    Button {
+                        showSmartProcess = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
+
+                            Text(unprocessedCount > 0 ? "Search \(unprocessedCount) saved items..." : "Search your library...")
+                                .font(.system(size: 15))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14) // Increased from 10 to 14
+                        .contentShape(Rectangle())
+                        .glassEffect(in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+                .background(Color(UIColor.systemBackground))
+
+                // Scrollable content (affected by pull-to-refresh)
+                ScrollView {
+                    VStack(spacing: 24) {
 
                     // Error message with auto-dismiss
                     if let error = errorMessage {
@@ -233,7 +250,7 @@ struct HomeView: View {
 
                     // Dynamic content tiles - always show this section
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Catch up on")
+                        Text("Ready to Learn")
                             .font(.title3.bold())
                             .padding(.horizontal)
 
@@ -257,7 +274,7 @@ struct HomeView: View {
                                     .foregroundColor(.secondary)
                                     .symbolRenderingMode(.hierarchical)
 
-                                Text("No content to process")
+                                Text("Your Feed is empty. Save something to begin.")
                                     .font(.headline)
 
                                 Text("Add articles, videos, or links to your feed to start learning")
@@ -268,7 +285,7 @@ struct HomeView: View {
                                 NavigationLink(destination: InboxView()) {
                                     HStack {
                                         Image(systemName: "plus.circle.fill")
-                                        Text("Add Content")
+                                        Text("Save to Feed")
                                     }
                                 }
                                 .buttonStyle(GlassProminentButtonStyle())
@@ -281,9 +298,9 @@ struct HomeView: View {
                         }
 
                         // Recent Nuggets
-                        let recentNuggets = nuggets.filter { $0.summary != nil }.prefix(3)
+                        let recentNuggets = nuggets.filter { $0.summary != nil && $0.isReady }.prefix(3)
                         if !recentNuggets.isEmpty {
-                            Text("Recent Nuggets")
+                            Text("Recent Nuggets \(SparkSymbol.spark)")
                                 .font(.title3.bold())
                                 .padding(.horizontal)
                                 .padding(.top, tiles.isEmpty ? 0 : 16)
@@ -298,8 +315,7 @@ struct HomeView: View {
                                     .listRowSeparator(.hidden)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                         Button(role: .destructive) {
-                                            nuggetToDelete = nugget
-                                            showDeleteConfirmation = true
+                                            deleteNugget(nugget)
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
@@ -313,41 +329,43 @@ struct HomeView: View {
                         }
                     }
 
-                    Spacer(minLength: 40)
+                        Spacer(minLength: 40)
+                    }
+                }
+                .refreshable {
+                    await loadNuggetsAsync()
+                    await syncPendingNuggets()
                 }
             }
             .navigationTitle("")
             .navigationDestination(item: $session) { session in
                 SessionView(session: session)
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshNuggets"))) { _ in
+                Task {
+                    await loadNuggetsAsync()
+                }
+            }
             .fullScreenCover(isPresented: $showTestWebView) {
                 TestWebView()
             }
             .sheet(isPresented: $showStats) {
                 StatsView()
+                    .presentationCornerRadius(20)
+                    .presentationBackgroundInteraction(.enabled)
             }
+            .liquidModalTransition(isPresented: showStats)
             .sheet(isPresented: $showSmartProcess) {
                 SmartProcessView(unprocessedCount: unprocessedCount) { newSession in
                     // Session will be created by SmartProcessView
                     session = newSession
                 }
+                .presentationDetents([.height(420), .medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(20)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             }
-            .confirmationDialog(
-                "Delete Nugget?",
-                isPresented: $showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let nugget = nuggetToDelete {
-                        deleteNugget(nugget)
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    nuggetToDelete = nil
-                }
-            } message: {
-                Text("This action cannot be undone.")
-            }
+            .liquidModalTransition(isPresented: showSmartProcess)
             .task {
                 // Use task instead of onAppear for async loading
                 await loadNuggetsAsync()
@@ -359,21 +377,49 @@ struct HomeView: View {
 
     @MainActor
     private func loadNuggetsAsync() async {
+        // Cancel any existing refresh task
+        refreshTask?.cancel()
+
+        // Implement caching - don't reload if we just loaded
+        let timeSinceLastLoad = Date().timeIntervalSince(lastLoadTime)
+        if timeSinceLastLoad < 2.0 && !nuggets.isEmpty {
+            // Skip refresh if we loaded less than 2 seconds ago
+            return
+        }
+
         // Don't show loading indicator on initial load to avoid jank
         if nuggets.isEmpty {
             isLoading = true
         }
 
-        do {
-            let loadedNuggets = try await NuggetService.shared.listNuggets()
-            withAnimation(.easeInOut(duration: 0.2)) {
-                nuggets = loadedNuggets
-                isLoading = false
+        // Create a new refresh task with debouncing
+        refreshTask = Task {
+            // Small delay to debounce rapid calls
+            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+
+            guard !Task.isCancelled else { return }
+
+            do {
+                let loadedNuggets = try await NuggetService.shared.listNuggets()
+                guard !Task.isCancelled else { return }
+
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        nuggets = loadedNuggets
+                        isLoading = false
+                        lastLoadTime = Date()
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isLoading = false
+                    print("Failed to load nuggets: \(error)")
+                }
             }
-        } catch {
-            isLoading = false
-            print("Failed to load nuggets: \(error)")
         }
+
+        await refreshTask?.value
     }
 
     private func openRecentNugget(_ nugget: Nugget) {
@@ -439,7 +485,7 @@ struct HomeView: View {
             sharedDefaults.synchronize()
 
             // Get the most recent unprocessed nuggets
-            let unprocessedNuggets = nuggets.filter { $0.summary == nil }.prefix(3)
+            let unprocessedNuggets = nuggets.filter { $0.summary == nil && $0.isReady }.prefix(3)
 
             if unprocessedNuggets.count >= 2 {
                 // Process them
@@ -477,13 +523,13 @@ struct HomeView: View {
         switch tile.filter {
         case .thisWeek:
             guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else { return }
-            filteredNuggets = nuggets.filter { $0.createdAt >= weekAgo && $0.summary == nil }
+            filteredNuggets = nuggets.filter { $0.createdAt >= weekAgo && $0.summary == nil && $0.isReady }
         case .today:
-            filteredNuggets = nuggets.filter { Calendar.current.isDateInToday($0.createdAt) && $0.summary == nil }
+            filteredNuggets = nuggets.filter { Calendar.current.isDateInToday($0.createdAt) && $0.summary == nil && $0.isReady }
         case .yesterday:
-            filteredNuggets = nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil }
+            filteredNuggets = nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil && $0.isReady }
         case .category(let category):
-            filteredNuggets = nuggets.filter { $0.category?.lowercased() == category.lowercased() && $0.summary == nil }
+            filteredNuggets = nuggets.filter { $0.category?.lowercased() == category.lowercased() && $0.summary == nil && $0.isReady }
         }
 
         guard filteredNuggets.count >= 2 else {
@@ -556,37 +602,56 @@ struct ContentTileView: View {
 struct RecentNuggetRow: View {
     let nugget: Nugget
     let onTap: () -> Void
+    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if let title = nugget.title {
-                        Text(title)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
+        ParallaxGlassCard {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    // Gold category dot before content
+                    GoldCategoryDot()
+                        .padding(.leading, 4)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let title = nugget.title {
+                            Text(title)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                                .lineLimit(2)
+                        }
+
+                        if let summary = nugget.summary {
+                            Text(summary)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
                     }
 
-                    if let summary = nugget.summary {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                .padding()
+                .glassEffect(in: .rect(cornerRadius: 12))
+                .overlay(
+                    FaintGradientHeader()
+                        .mask(RoundedRectangle(cornerRadius: 12))
+                        .allowsHitTesting(false),
+                    alignment: .top
+                )
             }
-            .padding()
-            .glassEffect(in: .rect(cornerRadius: 12))
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .glassShadowDrift(scrollOffset: scrollOffset)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y
+        } action: { oldValue, newValue in
+            scrollOffset = newValue - (oldValue ?? 0)
+        }
     }
 }
 

@@ -24,7 +24,9 @@
     "@aws-sdk/client-bedrock-runtime": "^3.478.0",
     "@aws-sdk/client-dynamodb": "^3.478.0",
     "@aws-sdk/lib-dynamodb": "^3.478.0",
+    "apple-signin-auth": "^2.0.0",
     "aws-jwt-verify": "^5.1.1",
+    "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",
     "uuid": "^9.0.1"
   },

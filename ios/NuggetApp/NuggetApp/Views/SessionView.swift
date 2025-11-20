@@ -12,12 +12,23 @@ struct SessionView: View {
     @State private var currentCardIndex = 0
     @State private var completedNuggetIds: [String] = []
     @State private var isCompleting = false
+    @State private var isProcessing = false
+    @State private var processedSession: Session?
+    @State private var pollingTimer: Timer?
+
+    // Use the processed session if available, otherwise use original
+    var currentSession: Session {
+        processedSession ?? session
+    }
 
     // Convert session nuggets into individual swipeable cards
     var cards: [CardData] {
         var result: [CardData] = []
 
-        for nugget in session.nuggets {
+        // Only show ready nuggets
+        let readyNuggets = currentSession.nuggets.filter { $0.isReady }
+
+        for nugget in readyNuggets {
             // Check if this is a grouped nugget with multiple sources
             if let isGrouped = nugget.isGrouped, isGrouped,
                let sourceUrls = nugget.sourceUrls,
@@ -67,10 +78,21 @@ struct SessionView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Button("Exit") {
+                Button {
                     completeSession()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
             }
+        }
+        .navigationBarBackButtonHidden(true)
+        .onAppear {
+            startPollingIfNeeded()
+        }
+        .onDisappear {
+            stopPolling()
         }
     }
 
@@ -78,23 +100,36 @@ struct SessionView: View {
         VStack(spacing: 32) {
             Spacer()
 
-            VStack(spacing: 24) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundStyle(.green)
+            ZStack {
+                // Spark pulse animation layer
+                SparkPulse()
+                    .position(x: UIScreen.main.bounds.width / 2, y: 40)
 
-                Text("Session Complete!")
-                    .font(.title.bold())
+                VStack(spacing: 24) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color.goldAccent, Color.goldAccent.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
 
-                Text("You reviewed \(completedNuggetIds.count) nugget\(completedNuggetIds.count == 1 ? "" : "s")")
-                    .foregroundColor(.secondary)
+                    Text("Session Complete \(SparkSymbol.spark)")
+                        .font(.title.bold())
+
+                    Text("You reviewed \(completedNuggetIds.count) nugget\(completedNuggetIds.count == 1 ? "" : "s")")
+                        .foregroundColor(.secondary)
+                }
+                .padding(40)
+                .glassEffect(in: .rect(cornerRadius: 24))
             }
-            .padding(40)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
 
             Spacer()
 
             Button {
+                HapticFeedback.success()
                 completeSession()
             } label: {
                 HStack(spacing: 10) {
@@ -106,17 +141,21 @@ struct SessionView: View {
                 .padding(.vertical, 16)
                 .background(
                     LinearGradient(
-                        colors: [Color.green, Color.green.opacity(0.8)],
+                        colors: [Color.goldAccent, Color.goldAccent.opacity(0.8)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     in: RoundedRectangle(cornerRadius: 14)
                 )
                 .foregroundColor(.white)
-                .shadow(color: Color.green.opacity(0.3), radius: 10, x: 0, y: 5)
+                .shadow(color: Color.goldAccent.opacity(0.3), radius: 10, x: 0, y: 5)
             }
+            .buttonStyle(LiquidGlassButtonStyle())
             .padding(.horizontal, 40)
             .padding(.bottom, 60)
+        }
+        .onAppear {
+            HapticFeedback.success()
         }
     }
 
@@ -126,17 +165,21 @@ struct SessionView: View {
             let nuggetId = cards[currentCardIndex].nuggetId
             if !completedNuggetIds.contains(nuggetId) {
                 completedNuggetIds.append(nuggetId)
+                // Haptic feedback for nugget completion
+                HapticFeedback.medium()
             }
         }
         currentCardIndex += 1
     }
 
     private func handleSkip() {
+        HapticFeedback.selection()
         currentCardIndex += 1
     }
 
     private func handleBack() {
         if currentCardIndex > 0 {
+            HapticFeedback.selection()
             currentCardIndex -= 1
         }
     }
@@ -163,6 +206,86 @@ struct SessionView: View {
                     dismiss()
                 }
             }
+        }
+    }
+
+    private func startPollingIfNeeded() {
+        // Check if any nuggets are still processing
+        let hasProcessing = currentSession.nuggets.contains { nugget in
+            if let individualSummaries = nugget.individualSummaries {
+                return individualSummaries.contains { $0.summary == "Processing..." }
+            }
+            return nugget.summary == "Processing..." ||
+                   nugget.summary?.contains("Processing") == true
+        }
+
+        if hasProcessing && session.sessionId != nil {
+            isProcessing = true
+            startPolling()
+        }
+    }
+
+    private func startPolling() {
+        guard let sessionId = session.sessionId else { return }
+
+        // Poll every 2 seconds
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            Task {
+                await checkSessionStatus(sessionId: sessionId)
+            }
+        }
+
+        // Also check immediately
+        Task {
+            await checkSessionStatus(sessionId: sessionId)
+        }
+    }
+
+    private func stopPolling() {
+        pollingTimer?.invalidate()
+        pollingTimer = nil
+        isProcessing = false
+    }
+
+    private func checkSessionStatus(sessionId: String) async {
+        guard let url = URL(string: "\(APIConfig.baseURL)/sessions/\(sessionId)/status") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        // Add auth header
+        if let token = KeychainManager.shared.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+
+            struct SessionStatusResponse: Codable {
+                let sessionId: String
+                let nuggets: [Nugget]
+                let processingComplete: Bool?
+            }
+
+            let response = try decoder.decode(SessionStatusResponse.self, from: data)
+
+            await MainActor.run {
+                // Update the session with new data
+                processedSession = Session(
+                    sessionId: response.sessionId,
+                    nuggets: response.nuggets,
+                    message: nil
+                )
+
+                // Stop polling if processing is complete
+                if response.processingComplete == true {
+                    stopPolling()
+                }
+            }
+        } catch {
+            print("Error checking session status: \(error)")
         }
     }
 }
@@ -458,21 +581,17 @@ struct OverviewCard: View {
                         // Key Points
                         if let keyPoints = nugget.keyPoints, !keyPoints.isEmpty {
                             VStack(alignment: .leading, spacing: 16) {
-                                Label("Key Insights", systemImage: "lightbulb.fill")
+                                Label("Key Insights \(SparkSymbol.spark)", systemImage: "lightbulb.fill")
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.primary.opacity(0.7))
 
                                 ForEach(Array(keyPoints.enumerated()), id: \.offset) { index, point in
                                     HStack(alignment: .top, spacing: 12) {
-                                        Circle()
-                                            .fill(LinearGradient(
-                                                colors: [.blue, .cyan],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ))
-                                            .frame(width: 6, height: 6)
-                                            .padding(.top, 8)
+                                        Text(SparkSymbol.spark)
+                                            .font(.caption)
+                                            .foregroundColor(.goldAccent)
+                                            .padding(.top, 4)
 
                                         Text(point)
                                             .font(.subheadline)

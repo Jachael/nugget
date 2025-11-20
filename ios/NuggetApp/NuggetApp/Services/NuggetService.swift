@@ -6,16 +6,18 @@ final class NuggetService {
     private init() {}
 
     /// Process any pending nuggets from the share extension
-    func processPendingSharedNuggets() async throws {
+    /// Returns true if there were pending nuggets processed
+    @discardableResult
+    func processPendingSharedNuggets() async throws -> Bool {
         guard let sharedDefaults = UserDefaults(suiteName: "group.erg.NuggetApp") else {
             print("Failed to access shared UserDefaults")
-            return
+            return false
         }
 
         guard let pendingNuggets = sharedDefaults.array(forKey: "pendingNuggets") as? [[String: Any]],
               !pendingNuggets.isEmpty else {
             print("No pending nuggets to process")
-            return
+            return false
         }
 
         print("Found \(pendingNuggets.count) pending nuggets from share extension")
@@ -45,6 +47,8 @@ final class NuggetService {
         sharedDefaults.removeObject(forKey: "pendingNuggets")
         sharedDefaults.synchronize()
         print("Cleared pending nuggets from shared storage")
+
+        return true // We had pending nuggets
     }
 
     func createNugget(request: CreateNuggetRequest) async throws -> Nugget {

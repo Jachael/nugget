@@ -5,6 +5,7 @@ struct SmartProcessView: View {
     @State private var customQuery = ""
     @State private var selectedPreset: String?
     @State private var isProcessing = false
+    @State private var processingComplete = false
     @State private var errorMessage: String?
     @State private var session: Session?
 
@@ -24,7 +25,7 @@ struct SmartProcessView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 16) {
                     // Compact Header
                     VStack(spacing: 4) {
                         Text("What do you want to learn?")
@@ -34,7 +35,7 @@ struct SmartProcessView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.top, 12)
+                    .padding(.top, 8)
 
                     // Custom query input
                     VStack(alignment: .leading, spacing: 12) {
@@ -101,7 +102,8 @@ struct SmartProcessView: View {
                                 title: title,
                                 gradientColors: colors,
                                 isSelected: selectedPreset == query,
-                                isProcessing: isProcessing && selectedPreset == query
+                                isProcessing: isProcessing && selectedPreset == query,
+                                isComplete: processingComplete && selectedPreset == query
                             ) {
                                 selectedPreset = query
                                 processQuery(query)
@@ -127,14 +129,6 @@ struct SmartProcessView: View {
                 .padding(.bottom, 20)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .fontWeight(.medium)
-                }
-            }
             .presentationDetents([.fraction(0.65)])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(20)
@@ -150,24 +144,31 @@ struct SmartProcessView: View {
 
         Task {
             do {
-                let newSession = try await NuggetService.shared.createSmartSession(query: query)
+                // Create the smart session
+                _ = try await NuggetService.shared.createSmartSession(query: query)
+
                 await MainActor.run {
-                    isProcessing = false
+                    // Show success state
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        processingComplete = true
+                        isProcessing = false
+                    }
 
-                    // Dismiss the sheet first
-                    dismiss()
+                    // Auto-dismiss after a short delay to show confirmation
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.6))
 
-                    // Then navigate to the session after a brief delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        onSessionCreated(newSession)
+                        // Dismiss the view
+                        dismiss()
+
+                        // Immediately refresh the home view
+                        NotificationCenter.default.post(name: NSNotification.Name("RefreshNuggets"), object: nil)
                     }
                 }
             } catch {
                 await MainActor.run {
                     isProcessing = false
                     errorMessage = error.localizedDescription
-
-                    // Clear selection after error
                     selectedPreset = nil
                 }
             }
@@ -180,18 +181,40 @@ struct PresetQueryCard: View {
     let gradientColors: [Color]
     let isSelected: Bool
     let isProcessing: Bool
+    let isComplete: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 0) {
-                if isProcessing {
-                    ProgressView()
-                        .tint(.secondary)
-                        .scaleEffect(0.7)
-                        .frame(height: 60)
-                        .frame(maxWidth: .infinity)
-                        .glassEffect(in: .rect(cornerRadius: 12))
+                if isComplete {
+                    VStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.green)
+                        Text("Ready!")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                    .frame(height: 60)
+                    .frame(maxWidth: .infinity)
+                    .glassEffect(in: .rect(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color.green.opacity(0.5), lineWidth: 2)
+                    )
+                } else if isProcessing {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .tint(.secondary)
+                            .scaleEffect(0.6)
+                        Text("Processing...")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(height: 60)
+                    .frame(maxWidth: .infinity)
+                    .glassEffect(in: .rect(cornerRadius: 12))
                 } else {
                     Text(title)
                         .font(.system(size: 12, weight: .medium))
@@ -216,7 +239,7 @@ struct PresetQueryCard: View {
                 }
             }
         }
-        .disabled(isProcessing)
+        .disabled(isProcessing || isComplete)
         .scaleEffect(isSelected ? 0.97 : 1.0)
         .animation(.easeInOut(duration: 0.1), value: isSelected)
     }

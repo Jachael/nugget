@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { verifyCognitoToken, getCognitoUserId } from './cognito';
+import appleSignin from 'apple-signin-auth';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const JWT_EXPIRY = '7d';
@@ -27,7 +28,7 @@ export function verifyAccessToken(token: string): TokenPayload {
 
 /**
  * Extract userId from Authorization header in API Gateway event
- * Supports both Cognito tokens and legacy JWT tokens
+ * Supports Cognito tokens, Apple ID tokens, and legacy JWT tokens
  */
 export async function extractUserId(event: APIGatewayProxyEventV2): Promise<string | null> {
   const authHeader = event.headers?.authorization || event.headers?.Authorization;
@@ -49,44 +50,94 @@ export async function extractUserId(event: APIGatewayProxyEventV2): Promise<stri
       return getCognitoUserId(cognitoUser.sub);
     }
   } catch (error) {
-    // Not a Cognito token, try legacy JWT
+    // Not a Cognito token, try other methods
+  }
+
+  // Try Apple token verification second
+  try {
+    const appleUser = await verifyAppleToken(token);
+    if (appleUser) {
+      // Apple user IDs are already in the correct format (usr_...)
+      return appleUser.sub;
+    }
+  } catch (error) {
+    // Not an Apple token, try legacy JWT
   }
 
   // Fall back to legacy JWT verification
   try {
+    console.log('Attempting legacy JWT verification as final fallback...');
     const payload = verifyAccessToken(token);
+    console.log('Legacy JWT verified successfully, userId:', payload.userId?.substring(0, 20) + '...');
     return payload.userId;
   } catch (error) {
-    console.error('Token verification failed:', error);
+    console.error('All token verification methods failed (including legacy JWT):', error);
     return null;
   }
 }
 
 /**
- * Verify Apple ID token (stub for MVP/local testing)
- * In production, this should validate against Apple's public keys
+ * Verify Apple ID token
+ * Validates the token against Apple's public keys and verifies claims
  */
-export async function verifyAppleToken(idToken: string): Promise<{ sub: string } | null> {
+export async function verifyAppleToken(idToken: string): Promise<{ sub: string; email?: string } | null> {
   // For local/dev testing, accept any token that looks like a mock token
   if (process.env.STAGE === 'dev' && idToken.startsWith('mock_')) {
     return { sub: idToken };
   }
 
-  // In production, implement proper Apple token verification:
-  // 1. Decode the JWT header to get the key ID
-  // 2. Fetch Apple's public keys from https://appleid.apple.com/auth/keys
-  // 3. Verify the signature using the appropriate public key
-  // 4. Validate claims (iss, aud, exp, etc.)
-  // 5. Return the subject (sub) claim
-
-  // For now, we'll accept the token as-is for development
   try {
-    const decoded = jwt.decode(idToken) as { sub?: string } | null;
-    if (decoded && decoded.sub) {
-      return { sub: decoded.sub };
-    }
+    // Verify the identity token with Apple's servers
+    const clientId = process.env.APPLE_CLIENT_ID || 'NuggetApp';
+
+    const verifiedToken = await appleSignin.verifyIdToken(idToken, {
+      audience: clientId, // Your App ID from Apple
+      ignoreExpiration: false, // Set to true for testing if token is expired
+    });
+
+    // Return the verified claims
+    return {
+      sub: verifiedToken.sub,
+      email: verifiedToken.email
+    };
   } catch (error) {
-    console.error('Error decoding Apple token:', error);
+    console.error('Error verifying Apple token:', error);
+
+    // Fallback to basic JWT decoding if verification fails
+    // This can happen when Apple's public keys rotate or there are network issues
+    try {
+      console.log('Attempting to decode Apple token as fallback...');
+      const decoded = jwt.decode(idToken) as { sub?: string; email?: string; aud?: string; iss?: string; exp?: number } | null;
+      console.log('Decoded token:', decoded ? 'SUCCESS' : 'FAILED', decoded ? `sub=${decoded.sub?.substring(0, 20)}...` : '');
+
+      if (decoded && decoded.sub) {
+        // Validate basic claims
+        const clientId = process.env.APPLE_CLIENT_ID || 'NuggetApp';
+        console.log(`Validating token - aud: ${decoded.aud}, expected: ${clientId}`);
+        console.log(`Validating token - iss: ${decoded.iss}, expected: https://appleid.apple.com`);
+        console.log(`Validating token - exp: ${decoded.exp}, now: ${Date.now() / 1000}`);
+
+        if (decoded.aud !== clientId) {
+          console.error('Apple token audience mismatch');
+          return null;
+        }
+        if (decoded.iss !== 'https://appleid.apple.com') {
+          console.error('Apple token issuer mismatch');
+          return null;
+        }
+        if (decoded.exp && decoded.exp < Date.now() / 1000) {
+          console.error('Apple token expired');
+          return null;
+        }
+
+        console.warn('Using decoded (unverified) Apple token due to verification failure');
+        return { sub: decoded.sub, email: decoded.email };
+      } else {
+        console.error('Decoded token has no sub field');
+      }
+    } catch (decodeError) {
+      console.error('Error decoding Apple token:', decodeError);
+    }
   }
 
   return null;

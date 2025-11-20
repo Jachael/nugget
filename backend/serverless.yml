@@ -18,6 +18,8 @@ provider:
     COGNITO_USER_POOL_ID: eu-west-1_1zILS9mOj
     COGNITO_CLIENT_ID: 6roa95ol200brl6tsrlnkckpd6
     USE_COGNITO: 'true'
+    APPLE_CLIENT_ID: NuggetApp
+    GOOGLE_CLIENT_ID: ${env:GOOGLE_CLIENT_ID, ''}
   iam:
     role:
       statements:
@@ -29,6 +31,7 @@ provider:
             - dynamodb:PutItem
             - dynamodb:UpdateItem
             - dynamodb:DeleteItem
+            - dynamodb:BatchWriteItem
           Resource:
             - !GetAtt UsersTable.Arn
             - !GetAtt NuggetsTable.Arn
@@ -54,11 +57,25 @@ functions:
           path: /v1/auth/apple
           method: post
 
+  authMock:
+    handler: dist/handlers/authMock.handler
+    events:
+      - httpApi:
+          path: /v1/auth/mock
+          method: post
+
   authCognito:
     handler: dist/handlers/authCognito.handler
     events:
       - httpApi:
           path: /v1/auth/cognito
+          method: post
+
+  authGoogle:
+    handler: dist/handlers/authGoogle.handler
+    events:
+      - httpApi:
+          path: /v1/auth/google
           method: post
 
   getMe:
@@ -67,6 +84,13 @@ functions:
       - httpApi:
           path: /v1/me
           method: get
+
+  deleteUser:
+    handler: dist/handlers/deleteUser.handler
+    events:
+      - httpApi:
+          path: /v1/user
+          method: delete
 
   createNugget:
     handler: dist/handlers/createNugget.handler
@@ -117,6 +141,13 @@ functions:
       - httpApi:
           path: /v1/sessions/{sessionId}/complete
           method: post
+
+  getSessionStatus:
+    handler: dist/handlers/getSessionStatus.handler
+    events:
+      - httpApi:
+          path: /v1/sessions/{sessionId}/status
+          method: get
 
   getPreferences:
     handler: dist/handlers/getPreferences.handler

@@ -75,6 +75,8 @@ struct InboxView: View {
     @State private var selectedTimeFilter: TimeFilter = .all
     @State private var selectedSortOrder: SortOrder = .newestFirst
     @State private var isLoadingMore = false
+    @State private var hasInitiallyLoaded = false
+    @State private var lastRefreshTime = Date.distantPast
 
     var scrapedNuggets: [Nugget] {
         sortedFilteredNuggets.filter { $0.summary == nil }
@@ -214,24 +216,38 @@ struct InboxView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        Button(action: {
+                        Button {
+                            // Prevent double-tap
+                            guard !showingAddNugget else { return }
                             showingAddNugget = true
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.primary)
-                                .padding(16)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                            HapticFeedback.medium()
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.goldAccent.opacity(0.1), Color.clear],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 56, height: 56)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+
+                                Image(systemName: "plus")
+                                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .scaleEffect(showingAddNugget ? 0.95 : 1.0)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showingAddNugget)
+                        .buttonStyle(LiquidGlassButtonStyle())
+                        .disabled(showingAddNugget)
+                        .floatingAnimation()
                     }
                     .padding(.trailing, 20)
                     .padding(.bottom, 20)
                 }
             }
-            .navigationTitle("Feed")
+            .navigationTitle("Feed \(SparkSymbol.spark)")
             .alert("Nuggets Processing", isPresented: $showProcessSuccess) {
                 Button("OK") { }
             } message: {
@@ -243,7 +259,10 @@ struct InboxView: View {
                 }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .presentationCornerRadius(20)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             }
+            .liquidModalTransition(isPresented: showingAddNugget)
             .task {
                 // Load content asynchronously
                 await loadNuggetsIfNeeded()
@@ -390,7 +409,7 @@ struct InboxView: View {
     private func refreshNuggets() async {
         do {
             // Check for and process any pending nuggets from share extension
-            try await NuggetService.shared.processPendingSharedNuggets()
+            let hadPendingNuggets = try await NuggetService.shared.processPendingSharedNuggets()
 
             // Then load all nuggets
             let loadedNuggets = try await NuggetService.shared.listNuggets()
@@ -400,7 +419,13 @@ struct InboxView: View {
                     if loadedNuggets != nuggets {
                         nuggets = loadedNuggets
                     }
+                    lastRefreshTime = Date()
                 }
+            }
+
+            // If we had pending nuggets, notify HomeView
+            if hadPendingNuggets {
+                NotificationCenter.default.post(name: NSNotification.Name("RefreshNuggets"), object: nil)
             }
         } catch {
             await MainActor.run {
@@ -456,13 +481,26 @@ struct InboxView: View {
     }
 
     private func loadNuggetsIfNeeded() async {
-        if nuggets.isEmpty {
+        // Check if we should skip loading
+        let timeSinceLastRefresh = Date().timeIntervalSince(lastRefreshTime)
+
+        // Skip if we've loaded recently (within 3 seconds) and have data
+        if hasInitiallyLoaded && !nuggets.isEmpty && timeSinceLastRefresh < 3.0 {
+            return
+        }
+
+        // Load if we haven't initially loaded or if nuggets is empty
+        if !hasInitiallyLoaded || nuggets.isEmpty {
             await loadNuggetsAsync()
+            hasInitiallyLoaded = true
         }
     }
 
     @MainActor
     private func loadNuggetsAsync() async {
+        // Prevent duplicate concurrent loads
+        guard !isLoading else { return }
+
         // Only show loading if we have no data yet
         if nuggets.isEmpty {
             isLoading = true
@@ -470,15 +508,23 @@ struct InboxView: View {
         errorMessage = nil
 
         do {
-            // Process shared content and load nuggets in parallel
-            async let sharedProcessing: () = try NuggetService.shared.processPendingSharedNuggets()
-            async let nuggetsLoading = try NuggetService.shared.listNuggets()
+            // First process shared content only if we haven't loaded recently
+            let timeSinceLastRefresh = Date().timeIntervalSince(lastRefreshTime)
+            let hadPendingNuggets = timeSinceLastRefresh > 3.0 ?
+                try await NuggetService.shared.processPendingSharedNuggets() : false
 
-            let (_, loadedNuggets) = try await (sharedProcessing, nuggetsLoading)
+            // Then load nuggets
+            let loadedNuggets = try await NuggetService.shared.listNuggets()
 
             withAnimation(.easeInOut(duration: 0.2)) {
                 nuggets = loadedNuggets
                 isLoading = false
+                lastRefreshTime = Date()
+            }
+
+            // If we had pending nuggets, also trigger a refresh in HomeView
+            if hadPendingNuggets {
+                NotificationCenter.default.post(name: NSNotification.Name("RefreshNuggets"), object: nil)
             }
         } catch {
             errorMessage = "Failed to load nuggets: \(error.localizedDescription)"
@@ -544,8 +590,14 @@ struct NuggetDetailView: View {
                     Text("Source")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                    Link(nugget.sourceUrl, destination: URL(string: nugget.sourceUrl)!)
-                        .font(.caption)
+                    if let url = URL(string: nugget.sourceUrl) {
+                        Link(nugget.sourceUrl, destination: url)
+                            .font(.caption)
+                    } else {
+                        Text(nugget.sourceUrl)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding()
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -565,92 +617,99 @@ struct NuggetRowView: View {
     @State private var isVisible = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Title or URL
-            if let title = nugget.title {
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(2)
-                    .transition(.opacity)
-            } else {
-                Text(nugget.sourceUrl)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundColor(.secondary)
-                    .transition(.opacity)
-            }
+        HStack(alignment: .top, spacing: 10) {
+            // Gold category dot
+            GoldCategoryDot()
+                .padding(.top, 8)
 
-            // Summary or status
-            if let summary = nugget.summary {
-                Text(summary)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(3)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            } else {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.caption)
+            VStack(alignment: .leading, spacing: 8) {
+                // Title or URL
+                if let title = nugget.title {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .transition(.opacity)
+                } else {
+                    Text(nugget.sourceUrl)
+                        .font(.headline)
+                        .lineLimit(1)
                         .foregroundColor(.secondary)
-                    Text("Ready to process")
+                        .transition(.opacity)
+                }
+
+                // Summary or status
+                if let summary = nugget.summary {
+                    Text(summary)
                         .font(.subheadline)
-                        .italic()
                         .foregroundColor(.secondary)
-                }
-                .transition(.opacity)
-            }
-
-            // Bottom row with category and time
-            HStack {
-                // Category badge
-                if let category = nugget.category {
+                        .lineLimit(3)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                } else {
                     HStack(spacing: 4) {
-                        Image(systemName: "tag.fill")
-                            .font(.system(size: 10))
-                        Text(category.capitalized)
+                        Image(systemName: "sparkles")
                             .font(.caption)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                getCategoryColor(category).opacity(0.2),
-                                getCategoryColor(category).opacity(0.1)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(getCategoryColor(category).opacity(0.3), lineWidth: 0.5)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-
-                // Processing indicator if being processed
-                if nugget.summary == nil && nugget.title != nil {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Processing...")
-                            .font(.caption)
+                            .foregroundColor(.goldAccent)
+                        Text("Ready to process")
+                            .font(.subheadline)
+                            .italic()
                             .foregroundColor(.secondary)
                     }
-                    .transition(.opacity.combined(with: .scale))
+                    .transition(.opacity)
                 }
 
-                Spacer()
+                // Bottom row with category and time
+                HStack {
+                    // Category badge with gold accent
+                    if let category = nugget.category {
+                        HStack(spacing: 4) {
+                            Text(SparkSymbol.spark)
+                                .font(.system(size: 10))
+                                .foregroundColor(.goldAccent)
+                            Text(category.capitalized)
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color.goldAccent.opacity(0.15),
+                                    Color.goldAccent.opacity(0.05)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.goldAccent.opacity(0.3), lineWidth: 0.5)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
 
-                // Time ago
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 10))
-                    Text(timeAgo(from: nugget.createdAt))
-                        .font(.caption)
+                    // Processing indicator if being processed
+                    if nugget.summary == nil && nugget.title != nil {
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("Processing...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .transition(.opacity.combined(with: .scale))
+                    }
+
+                    Spacer()
+
+                    // Time ago
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 10))
+                        Text(timeAgo(from: nugget.createdAt))
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
                 }
-                .foregroundColor(.secondary)
             }
         }
         .padding(.vertical, 12)
@@ -690,7 +749,7 @@ struct NuggetRowView: View {
             } else if let minutes = components.minute, minutes > 0 {
                 return "\(minutes)m ago"
             } else {
-                return "Just now"
+                return "Just now \(SparkSymbol.spark)"
             }
         } else if calendar.isDateInYesterday(date) {
             return "Yesterday"
@@ -876,7 +935,7 @@ struct AddNuggetView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 #endif
             }
-            .navigationTitle("Add Content")
+            .navigationTitle("Save to Feed")
             #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

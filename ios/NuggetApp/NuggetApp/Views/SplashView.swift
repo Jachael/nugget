@@ -4,16 +4,12 @@ struct SplashView: View {
     @AppStorage("colorScheme") private var colorScheme: String = "system"
     @Environment(\.colorScheme) private var systemColorScheme
 
-    @State private var typedText = ""
-    @State private var textScale: CGFloat = 1.0
-    @State private var fontSize: CGFloat = 48
-    @State private var textOpacity: Double = 1.0
-    @State private var backgroundColor: Color = .white
-    @State private var overlayOpacity: Double = 0.0
-    @State private var isZooming = false
+    @State private var iconScale: CGFloat = 0
+    @State private var iconOpacity: Double = 0
+    @State private var ringScale: CGFloat = 0.8
+    @State private var ringOpacity: Double = 0
+    @State private var textOpacity: Double = 0
     @State private var hasStarted = false
-
-    private let fullText = "Nugget"
 
     private var isDarkMode: Bool {
         if colorScheme == "dark" {
@@ -21,83 +17,124 @@ struct SplashView: View {
         } else if colorScheme == "light" {
             return false
         } else {
-            // System preference
             return systemColorScheme == .dark
         }
     }
 
-    private var textColor: Color {
-        // For light mode preference: white text, for dark mode: black text
-        isDarkMode ? .black : .white
-    }
-
-    private var backgroundStartColor: Color {
-        // For light mode preference: black background, for dark mode: white background
-        isDarkMode ? .white : .black
-    }
-
     var body: some View {
         ZStack {
-            // Background that will change based on theme
-            backgroundColor
+            // Clean background
+            Color(UIColor.systemBackground)
                 .ignoresSafeArea()
 
-            // Center the text without GeometryReader to avoid layout issues
-            Text(typedText)
-                .font(.system(size: fontSize, weight: .bold, design: .rounded))
-                .foregroundColor(textColor)
-                .scaleEffect(textScale, anchor: .center) // Explicitly set anchor point
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Centered logo animation
+                ZStack {
+                    // Subtle expanding ring
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.goldAccent.opacity(0.2),
+                                    Color.goldAccent.opacity(0)
+                                ],
+                                startPoint: .center,
+                                endPoint: .trailing
+                            ),
+                            lineWidth: 1.5
+                        )
+                        .frame(width: 140, height: 140)
+                        .scaleEffect(ringScale)
+                        .opacity(ringOpacity)
+
+                    // Icon with liquid glass effect
+                    ZStack {
+                        // Soft glow
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        Color.goldAccent.opacity(0.08),
+                                        Color.clear
+                                    ],
+                                    center: .center,
+                                    startRadius: 10,
+                                    endRadius: 60
+                                )
+                            )
+                            .frame(width: 160, height: 160)
+                            .blur(radius: 15)
+                            .opacity(iconOpacity)
+
+                        // Main icon
+                        Image(systemName: "square.stack.3d.up.fill")
+                            .font(.system(size: 48, weight: .medium))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        Color.goldAccent,
+                                        Color.goldAccent.opacity(0.8)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .padding(28)
+                            .glassEffect(in: .circle)
+                            .shadow(color: Color.goldAccent.opacity(0.15), radius: 10, x: 0, y: 4)
+                    }
+                    .scaleEffect(iconScale)
+                    .opacity(iconOpacity)
+                }
+
+                // App name appears after icon
+                VStack(spacing: 6) {
+                    Text("Nugget")
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    Text("Learn Something New")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 40)
                 .opacity(textOpacity)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(nil, value: typedText) // Prevent animation on typing
-                .drawingGroup() // Renders at high quality before scaling
 
-            // Overlay that fades in to create seamless transition
-            // Should match the text color (what we're zooming into)
-            textColor
-                .ignoresSafeArea()
-                .opacity(overlayOpacity)
+                Spacer()
+                Spacer()
+            }
         }
         .onAppear {
             guard !hasStarted else { return }
             hasStarted = true
-            backgroundColor = backgroundStartColor
-            startTypingAnimation()
+            startAnimationSequence()
         }
     }
 
-    private func startTypingAnimation() {
-        // Type out "Nugget" letter by letter with smoother timing
-        for (index, letter) in fullText.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.15) {
-                typedText.append(letter)
-            }
+    private func startAnimationSequence() {
+        // Phase 1: Icon scales up with spring animation
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+            iconScale = 1
+            iconOpacity = 1
         }
 
-        // After typing completes, start zoom animation
-        let typingDuration = Double(fullText.count) * 0.15
-        DispatchQueue.main.asyncAfter(deadline: .now() + typingDuration + 0.4) {
-            startZoomAnimation()
-        }
-    }
-
-    private func startZoomAnimation() {
-        guard !isZooming else { return }
-        isZooming = true
-
-        // Smooth zoom into center with high quality text
-        withAnimation(.easeInOut(duration: 0.8)) {
-            fontSize = 180  // Larger font for better resolution
-            textScale = 10.0  // Scale to fill screen completely
+        // Phase 2: Ring expands subtly
+        withAnimation(.easeOut(duration: 1.2).delay(0.3)) {
+            ringScale = 1.4
+            ringOpacity = 1
         }
 
-        // Start fading overlay earlier to blend smoothly
-        withAnimation(.easeIn(duration: 0.6).delay(0.5)) {
-            overlayOpacity = 1.0  // Fade in the final color
+        // Phase 3: Text fades in
+        withAnimation(.easeIn(duration: 0.5).delay(0.5)) {
+            textOpacity = 1
         }
 
-        // Background stays dark/light - we don't need to transition it
-        // The overlay will create the final effect
+        // Phase 4: Ring fades out
+        withAnimation(.easeOut(duration: 0.8).delay(1.0)) {
+            ringOpacity = 0
+        }
     }
 }
 

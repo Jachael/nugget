@@ -57,15 +57,28 @@ struct ArticleWebView: View {
 
             // Native iOS 26 WebView with optimized loading
             WebView(webPage)
-                .task {
-                    // Load immediately in a task to avoid blocking UI
+                .onAppear {
+                    // Load on appear with optimized settings
                     if !hasLoaded {
                         hasLoaded = true
-                        var request = URLRequest(url: url)
-                        request.cachePolicy = .returnCacheDataElseLoad
-                        request.timeoutInterval = 30
-                        webPage.load(request)
+                        Task {
+                            var request = URLRequest(url: url)
+                            request.cachePolicy = .returnCacheDataElseLoad
+                            request.timeoutInterval = 30
+
+                            // Add memory-efficient headers
+                            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+                            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+
+                            await MainActor.run { @MainActor in
+                                webPage.load(request)
+                            }
+                        }
                     }
+                }
+                .onDisappear {
+                    // Clean up WebView resources when dismissing
+                    webPage.stopLoading()
                 }
         }
     }

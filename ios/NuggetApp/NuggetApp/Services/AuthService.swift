@@ -1,6 +1,12 @@
 import Foundation
 import AuthenticationServices
 
+enum AuthError: Error {
+    case invalidCredentials
+    case networkError
+    case unknown
+}
+
 final class AuthService: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
@@ -23,7 +29,8 @@ final class AuthService: ObservableObject {
                         self.currentUser = User(
                             userId: userId,
                             accessToken: token,
-                            streak: userProfile.streak
+                            streak: userProfile.streak,
+                            firstName: userProfile.firstName
                         )
                     }
                 } catch {
@@ -33,7 +40,8 @@ final class AuthService: ObservableObject {
                         self.currentUser = User(
                             userId: userId,
                             accessToken: token,
-                            streak: 0
+                            streak: 0,
+                            firstName: nil
                         )
                     }
                 }
@@ -45,6 +53,7 @@ final class AuthService: ObservableObject {
         let userId: String
         let streak: Int
         let lastActiveDate: String
+        let firstName: String?
     }
 
     private func fetchUserProfile() async throws -> AuthResponse {
@@ -59,19 +68,40 @@ final class AuthService: ObservableObject {
         return AuthResponse(
             userId: profile.userId,
             accessToken: "", // Not needed for this use case
-            streak: profile.streak
+            streak: profile.streak,
+            firstName: profile.firstName
         )
     }
 
-    func signInWithApple(idToken: String) async throws {
+    func signInWithApple(
+        identityToken: String,
+        authorizationCode: String,
+        userIdentifier: String,
+        email: String?,
+        fullName: PersonNameComponents?
+    ) async throws {
         struct AuthRequest: Codable {
-            let idToken: String
+            let identityToken: String
+            let authorizationCode: String
+            let userIdentifier: String
+            let email: String?
+            let firstName: String?
+            let lastName: String?
         }
 
+        let authRequest = AuthRequest(
+            identityToken: identityToken,
+            authorizationCode: authorizationCode,
+            userIdentifier: userIdentifier,
+            email: email,
+            firstName: fullName?.givenName,
+            lastName: fullName?.familyName
+        )
+
         let authResponse = try await APIClient.shared.send(
-            path: CognitoConfig.authEndpoint,
+            path: "/auth/apple",
             method: "POST",
-            body: AuthRequest(idToken: idToken),
+            body: authRequest,
             requiresAuth: false,
             responseType: AuthResponse.self
         )
@@ -85,21 +115,76 @@ final class AuthService: ObservableObject {
             self.currentUser = User(
                 userId: authResponse.userId,
                 accessToken: authResponse.accessToken,
-                streak: authResponse.streak
+                streak: authResponse.streak,
+                firstName: authResponse.firstName
             )
             self.isAuthenticated = true
         }
     }
 
     func signInWithMockToken() async throws {
-        // For local testing without Apple Sign In
-        let mockToken = "mock_test_user_\(UUID().uuidString)"
-        try await signInWithApple(idToken: mockToken)
+        // For local testing - directly authenticate with backend
+        struct MockAuthRequest: Codable {
+            let mockUser: String
+        }
+
+        // Add special header for mock authentication in production
+        var headers: [String: String] = [:]
+        headers["X-Test-Auth"] = "nugget-test-2024"
+
+        let authResponse = try await APIClient.shared.send(
+            path: "/auth/mock",
+            method: "POST",
+            body: MockAuthRequest(mockUser: "test_user_\(UUID().uuidString.prefix(8))"),
+            requiresAuth: false,
+            responseType: AuthResponse.self,
+            headers: headers
+        )
+
+        // Save credentials
+        KeychainManager.shared.saveToken(authResponse.accessToken)
+        KeychainManager.shared.saveUserId(authResponse.userId)
+
+        // Update state
+        await MainActor.run {
+            self.currentUser = User(
+                userId: authResponse.userId,
+                accessToken: authResponse.accessToken,
+                streak: authResponse.streak,
+                firstName: authResponse.firstName
+            )
+            self.isAuthenticated = true
+        }
     }
 
     func signOut() {
         KeychainManager.shared.clearAll()
         currentUser = nil
         isAuthenticated = false
+
+        // Clear tutorial flag so new users see it again
+        UserDefaults.standard.removeObject(forKey: "hasSeenTutorial")
+    }
+
+    func deleteAccount() async throws {
+        // Call backend to delete account
+        struct DeleteResponse: Codable {
+            let message: String
+        }
+
+        _ = try await APIClient.shared.send(
+            path: "/user",
+            method: "DELETE",
+            body: Optional<String>.none,
+            requiresAuth: true,
+            responseType: DeleteResponse.self
+        )
+
+        // Clear local data after successful deletion
+        await MainActor.run {
+            KeychainManager.shared.clearAll()
+            currentUser = nil
+            isAuthenticated = false
+        }
     }
 }

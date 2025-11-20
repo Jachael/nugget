@@ -10,13 +10,14 @@ interface SummariseNuggetEvent {
   nuggetId?: string;
   nuggetIds?: string[];
   grouped?: boolean;
+  groupedNuggetId?: string; // ID of the existing grouped nugget to update
   groupAfterSummarize?: boolean;
   groupNuggetIds?: string[];
 }
 
 export const handler: Handler<SummariseNuggetEvent> = async (event) => {
   try {
-    const { userId, nuggetId, nuggetIds, grouped, groupAfterSummarize, groupNuggetIds } = event;
+    const { userId, nuggetId, nuggetIds, grouped, groupedNuggetId, groupAfterSummarize, groupNuggetIds } = event;
 
     if (!userId || (!nuggetId && !nuggetIds)) {
       console.error('Missing userId or nuggetId/nuggetIds in event');
@@ -49,28 +50,54 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
       console.log(`Summarising ${articles.length} articles as a group`);
       const result = await summariseGroupedContent(articles);
 
-      // Create a new grouped nugget
+      // Use the provided groupedNuggetId or create a new one (fallback)
+      const finalGroupedNuggetId = groupedNuggetId || uuidv4();
       const now = Date.now() / 1000;
-      const groupedNuggetId = uuidv4();
       const newPriorityScore = computePriorityScore(now, 0);
 
-      // Extract individual summaries from original nuggets
-      const individualSummaries = nuggets
-        .filter(n => n.summary) // Only include nuggets that have been summarized
-        .map(n => ({
-          nuggetId: n.nuggetId,
-          title: n.rawTitle || 'Untitled',
-          summary: n.summary || '',
-          keyPoints: n.keyPoints || [],
-          sourceUrl: n.sourceUrl,
-        }));
+      // First, summarize each individual nugget if not already done
+      console.log(`Summarizing ${nuggets.length} individual nuggets first...`);
+      for (const nugget of nuggets) {
+        if (!nugget.summary || nugget.processingState !== 'ready') {
+          console.log(`Summarizing nugget: ${nugget.nuggetId}`);
+          const summaryResult = await summariseContent(
+            nugget.rawTitle,
+            nugget.rawText,
+            nugget.sourceUrl
+          );
+
+          // Update the nugget with its summary
+          await updateItem(TableNames.nuggets, { userId, nuggetId: nugget.nuggetId }, {
+            rawTitle: summaryResult.title,
+            summary: summaryResult.summary,
+            keyPoints: summaryResult.keyPoints,
+            question: summaryResult.question,
+            processingState: 'ready',
+          });
+
+          // Update local copy for grouping
+          nugget.rawTitle = summaryResult.title;
+          nugget.summary = summaryResult.summary;
+          nugget.keyPoints = summaryResult.keyPoints;
+          nugget.question = summaryResult.question;
+        }
+      }
+
+      // Extract individual summaries from the now-summarized nuggets
+      const individualSummaries = nuggets.map(n => ({
+        nuggetId: n.nuggetId,
+        title: n.rawTitle || 'Untitled',
+        summary: n.summary || '',
+        keyPoints: n.keyPoints || [],
+        sourceUrl: n.sourceUrl,
+      }));
 
       console.log(`Individual summaries count: ${individualSummaries.length}`);
       console.log(`Individual summaries:`, JSON.stringify(individualSummaries, null, 2));
 
       const groupedNugget: Nugget = {
         userId,
-        nuggetId: groupedNuggetId,
+        nuggetId: finalGroupedNuggetId,
         sourceUrl: nuggets[0].sourceUrl, // Primary URL
         sourceUrls: nuggets.map(n => n.sourceUrl), // All URLs
         sourceType: nuggets[0].sourceType,
@@ -91,13 +118,13 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
 
       console.log(`Grouped nugget object:`, JSON.stringify(groupedNugget, null, 2));
 
-      // Save grouped nugget to database
+      // Save/Update grouped nugget in database
       try {
-        console.log(`Creating grouped nugget with ID: ${groupedNuggetId}`);
+        console.log(`Updating grouped nugget with ID: ${finalGroupedNuggetId}`);
         await putItem(TableNames.nuggets, groupedNugget);
         console.log(`Grouped nugget saved to database`);
       } catch (error) {
-        console.error(`Failed to create grouped nugget:`, error);
+        console.error(`Failed to update grouped nugget:`, error);
         throw error;
       }
 
@@ -117,8 +144,8 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
         // Continue anyway - grouped nugget is created
       }
 
-      console.log(`Successfully created grouped nugget: ${groupedNuggetId}`);
-      return { success: true, groupedNuggetId };
+      console.log(`Successfully created grouped nugget: ${finalGroupedNuggetId}`);
+      return { success: true, groupedNuggetId: finalGroupedNuggetId };
     }
 
     // Handle single nugget processing (original behavior)

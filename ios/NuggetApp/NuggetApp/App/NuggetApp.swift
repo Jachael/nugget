@@ -5,57 +5,33 @@ struct NuggetApp: App {
     @StateObject private var authService = AuthService()
     @State private var preferences: UserPreferences?
     @State private var isLoadingPreferences = true
-    @State private var showSplash = true
-    @State private var dataLoaded = false
+    @State private var showTutorial = false
     @AppStorage("colorScheme") private var colorScheme: String = "system"
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if showSplash {
-                    SplashView()
-                        .task {
-                            // Start loading data immediately in parallel
-                            async let minimumAnimationTime: () = Task.sleep(nanoseconds: 2_200_000_000)
-                            async let dataLoad: () = loadAllDataAsync()
-
-                            // Wait for both animation and data loading to complete
-                            _ = try? await (minimumAnimationTime, dataLoad)
-
-                            // Only hide splash when both animation is done AND data is loaded
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                showSplash = false
-                            }
-                        }
-                } else if !authService.isAuthenticated {
+                if !authService.isAuthenticated {
                     LoginView()
                         .environmentObject(authService)
                 } else if isLoadingPreferences {
-                    // Don't show splash again, just show a blank screen briefly
                     Color.clear
                         .task {
-                            await loadPreferencesAsync()
+                            await loadPreferencesAndDataAsync()
                         }
-                } else if let prefs = preferences, !prefs.onboardingCompleted {
-                    OnboardingView(isOnboardingComplete: .init(
-                        get: { prefs.onboardingCompleted },
-                        set: { newValue in
-                            if newValue {
-                                Task {
-                                    await loadPreferencesAsync()
-                                }
-                            }
-                        }
-                    ))
                 } else {
                     MainTabView()
                         .environmentObject(authService)
+                        .sheet(isPresented: $showTutorial) {
+                            TutorialView()
+                        }
                 }
             }
             .onChange(of: authService.isAuthenticated) { oldValue, newValue in
                 if newValue {
                     Task {
-                        await loadPreferencesAsync()
+                        await loadPreferencesAndDataAsync()
                     }
                 }
             }
@@ -75,24 +51,10 @@ struct NuggetApp: App {
     }
 
     @MainActor
-    private func loadPreferencesAsync() async {
-        do {
-            let prefs = try await PreferencesService.shared.getPreferences()
-            preferences = prefs
-            isLoadingPreferences = false
-        } catch {
-            // If preferences don't exist or there's an error, show onboarding
-            preferences = UserPreferences.default
-            isLoadingPreferences = false
-            print("Error loading preferences: \(error)")
-        }
-    }
-
-    @MainActor
-    private func loadAllDataAsync() async {
+    private func loadPreferencesAndDataAsync() async {
         // Only load if authenticated
         guard authService.isAuthenticated else {
-            dataLoaded = true
+            isLoadingPreferences = false
             return
         }
 
@@ -105,11 +67,19 @@ struct NuggetApp: App {
                     await MainActor.run {
                         self.preferences = prefs
                         self.isLoadingPreferences = false
+                        // Show tutorial if user hasn't seen it yet
+                        if !self.hasSeenTutorial {
+                            self.showTutorial = true
+                        }
                     }
                 } catch {
                     await MainActor.run {
                         self.preferences = UserPreferences.default
                         self.isLoadingPreferences = false
+                        // Show tutorial if preferences don't exist
+                        if !self.hasSeenTutorial {
+                            self.showTutorial = true
+                        }
                     }
                     print("Error loading preferences: \(error)")
                 }
@@ -124,8 +94,20 @@ struct NuggetApp: App {
                     print("Error pre-loading nuggets: \(error)")
                 }
             }
-        }
 
-        dataLoaded = true
+            // Process any pending nuggets from Share Extension
+            group.addTask {
+                do {
+                    let processed = try await NuggetService.shared.processPendingSharedNuggets()
+                    if processed {
+                        print("Processed pending nuggets from share extension")
+                        // Refresh nuggets list to show newly added items
+                        _ = try? await NuggetService.shared.listNuggets()
+                    }
+                } catch {
+                    print("Error processing pending nuggets: \(error)")
+                }
+            }
+        }
     }
 }

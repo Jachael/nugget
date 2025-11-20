@@ -7,6 +7,9 @@ struct SettingsView: View {
     @State private var isLoadingPreferences = true
     @State private var isLoadingNuggets = true
     @State private var showingEditPreferences = false
+    @State private var showingDeleteConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var deleteError: String?
     @AppStorage("colorScheme") private var colorScheme: String = "system"
 
     private func getUserLevel(streak: Int) -> String {
@@ -24,10 +27,9 @@ struct SettingsView: View {
 
     private var username: String {
         if let user = authService.currentUser {
-            // Extract username from userId (e.g., "usr_mock_test_user_123" -> "User")
-            let components = user.userId.components(separatedBy: "_")
-            if components.count > 3 {
-                return components[3].capitalized
+            // Use firstName if available, otherwise fall back to "User"
+            if let firstName = user.firstName, !firstName.isEmpty {
+                return firstName
             }
         }
         return "User"
@@ -51,16 +53,11 @@ struct SettingsView: View {
                 VStack(spacing: 24) {
                     // Profile Header with full-width streak card
                     VStack(spacing: 20) {
-                        Image(systemName: "person.circle.fill")
-                            .font(.system(size: 80))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 20)
-
-                        // Full-width user card
+                        // Full-width user card - removed top person icon
                         HStack(spacing: 16) {
-                            Image(systemName: "flame.fill")
+                            Image(systemName: "person.circle.fill")
                                 .font(.system(size: 36))
-                                .foregroundColor(.orange)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 6) {
@@ -94,6 +91,7 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity)
                         .glassEffect(in: .rect(cornerRadius: 16))
                         .padding(.horizontal)
+                        .padding(.top, 20)
                     }
 
                     // Stats Grid
@@ -122,7 +120,7 @@ struct SettingsView: View {
                         StatCard(
                             title: "Streak",
                             value: "\(authService.currentUser?.streak ?? 0)",
-                            icon: "flame.fill"
+                            icon: "square.stack.3d.up.fill"
                         )
                     }
                     .padding(.horizontal)
@@ -208,19 +206,44 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Sign Out Button
-                    Button(role: .destructive) {
-                        authService.signOut()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Text("Sign Out")
-                                .fontWeight(.semibold)
-                            Spacer()
+                    // Account Actions
+                    VStack(spacing: 12) {
+                        // Sign Out Button
+                        Button(role: .destructive) {
+                            authService.signOut()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Sign Out")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            .padding(.vertical, 14)
                         }
-                        .padding(.vertical, 14)
+                        .buttonStyle(LiquidGlassButtonStyle())
+
+                        // Delete Account Button
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if isDeletingAccount {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle())
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Text("Delete Account")
+                                        .fontWeight(.semibold)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 14)
+                        }
+                        .buttonStyle(LiquidGlassButtonStyle())
+                        .foregroundColor(.red)
+                        .disabled(isDeletingAccount)
                     }
-                    .buttonStyle(GlassButtonStyle())
                     .padding(.horizontal)
                     .padding(.bottom, 40)
                 }
@@ -229,6 +252,23 @@ struct SettingsView: View {
             .onAppear {
                 loadPreferences()
                 loadNuggets()
+            }
+            .alert("Delete Account", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    deleteAccount()
+                }
+            } message: {
+                Text("Are you sure you want to delete your account? This action cannot be undone. All your data will be permanently deleted.")
+            }
+            .alert("Error", isPresented: .constant(deleteError != nil)) {
+                Button("OK") {
+                    deleteError = nil
+                }
+            } message: {
+                if let error = deleteError {
+                    Text(error)
+                }
             }
         }
     }
@@ -265,6 +305,26 @@ struct SettingsView: View {
             } catch {
                 await MainActor.run {
                     isLoadingNuggets = false
+                }
+            }
+        }
+    }
+
+    private func deleteAccount() {
+        isDeletingAccount = true
+        deleteError = nil
+
+        Task {
+            do {
+                try await authService.deleteAccount()
+                await MainActor.run {
+                    // Sign out after successful deletion
+                    authService.signOut()
+                }
+            } catch {
+                await MainActor.run {
+                    isDeletingAccount = false
+                    deleteError = "Failed to delete account: \(error.localizedDescription)"
                 }
             }
         }

@@ -26,7 +26,8 @@ final class APIClient {
         path: String,
         method: String,
         body: (any Encodable)? = nil,
-        requiresAuth: Bool = false
+        requiresAuth: Bool = false,
+        headers: [String: String]? = nil
     ) throws -> URLRequest {
         // Handle query parameters properly
         let urlString = APIConfig.baseURL.absoluteString + path
@@ -49,6 +50,13 @@ final class APIClient {
             request.httpBody = try JSONEncoder().encode(body)
         }
 
+        // Add custom headers
+        if let headers = headers {
+            for (key, value) in headers {
+                request.setValue(value, forHTTPHeaderField: key)
+            }
+        }
+
         return request
     }
 
@@ -57,12 +65,17 @@ final class APIClient {
         method: String,
         body: (any Encodable)? = nil,
         requiresAuth: Bool = false,
-        responseType: T.Type
+        responseType: T.Type,
+        headers: [String: String]? = nil
     ) async throws -> T {
-        let request = try createRequest(path: path, method: method, body: body, requiresAuth: requiresAuth)
+        let request = try createRequest(path: path, method: method, body: body, requiresAuth: requiresAuth, headers: headers)
 
         #if DEBUG
         print("📡 API Request: \(method) \(request.url?.absoluteString ?? "unknown")")
+        if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
+            print("📤 Request Body: \(bodyString)")
+        }
+        print("📋 Request Headers: \(request.allHTTPHeaderFields ?? [:])")
         #endif
 
         do {
@@ -74,6 +87,9 @@ final class APIClient {
 
             #if DEBUG
             print("📥 Response: \(httpResponse.statusCode)")
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📥 Response Body: \(responseString)")
+            }
             #endif
 
             guard (200..<300).contains(httpResponse.statusCode) else {

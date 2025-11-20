@@ -6,11 +6,9 @@ class ShareViewController: UIViewController {
 
     private var sharedURL: URL?
     private var containerView: UIView!
-    private var activityIndicator: UIActivityIndicatorView!
-    private var successImageView: UIImageView!
+    private var checkmarkImageView: UIImageView!
     private var titleLabel: UILabel!
     private var messageLabel: UILabel!
-    private var actionStackView: UIStackView!
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,84 +18,68 @@ class ShareViewController: UIViewController {
     }
 
     private func setupUI() {
-        view.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.4)
 
-        // Container for the content
+        // Modern card container
         containerView = UIView()
-        containerView.backgroundColor = .secondarySystemBackground
-        containerView.layer.cornerRadius = 20
-        containerView.layer.masksToBounds = true
+        containerView.backgroundColor = .systemBackground
+        containerView.layer.cornerRadius = 16
+        containerView.layer.shadowColor = UIColor.black.cgColor
+        containerView.layer.shadowOffset = CGSize(width: 0, height: 4)
+        containerView.layer.shadowRadius = 12
+        containerView.layer.shadowOpacity = 0.1
         containerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(containerView)
 
-        // Activity indicator
-        activityIndicator = UIActivityIndicatorView(style: .large)
-        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
-        activityIndicator.startAnimating()
-        containerView.addSubview(activityIndicator)
-
-        // Success image (hidden initially)
-        successImageView = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
-        successImageView.tintColor = .systemGreen
-        successImageView.contentMode = .scaleAspectFit
-        successImageView.translatesAutoresizingMaskIntoConstraints = false
-        successImageView.alpha = 0
-        containerView.addSubview(successImageView)
+        // Success checkmark
+        checkmarkImageView = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+        checkmarkImageView.tintColor = .systemGreen
+        checkmarkImageView.contentMode = .scaleAspectFit
+        checkmarkImageView.translatesAutoresizingMaskIntoConstraints = false
+        checkmarkImageView.alpha = 0
+        checkmarkImageView.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+        containerView.addSubview(checkmarkImageView)
 
         // Title label
         titleLabel = UILabel()
-        titleLabel.text = "Saving to Nugget..."
-        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
+        titleLabel.text = "Adding to Nugget..."
+        titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textAlignment = .center
+        titleLabel.textColor = .label
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(titleLabel)
 
         // Message label
         messageLabel = UILabel()
-        messageLabel.text = "Adding to your inbox"
-        messageLabel.font = .systemFont(ofSize: 14)
+        messageLabel.text = "This will appear in your inbox"
+        messageLabel.font = .systemFont(ofSize: 14, weight: .regular)
         messageLabel.textColor = .secondaryLabel
         messageLabel.textAlignment = .center
         messageLabel.numberOfLines = 0
+        messageLabel.alpha = 0
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(messageLabel)
-
-        // Action buttons stack (hidden initially)
-        actionStackView = UIStackView()
-        actionStackView.axis = .vertical
-        actionStackView.spacing = 12
-        actionStackView.distribution = .fillEqually
-        actionStackView.translatesAutoresizingMaskIntoConstraints = false
-        actionStackView.alpha = 0
-        containerView.addSubview(actionStackView)
 
         // Setup constraints
         NSLayoutConstraint.activate([
             containerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             containerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            containerView.widthAnchor.constraint(equalToConstant: 280),
-            containerView.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
+            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
 
-            activityIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            activityIndicator.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 30),
+            checkmarkImageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            checkmarkImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 32),
+            checkmarkImageView.widthAnchor.constraint(equalToConstant: 56),
+            checkmarkImageView.heightAnchor.constraint(equalToConstant: 56),
 
-            successImageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            successImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 30),
-            successImageView.widthAnchor.constraint(equalToConstant: 60),
-            successImageView.heightAnchor.constraint(equalToConstant: 60),
-
-            titleLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 20),
-            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            titleLabel.topAnchor.constraint(equalTo: checkmarkImageView.bottomAnchor, constant: 16),
+            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -24),
 
             messageLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            messageLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            messageLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-
-            actionStackView.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 24),
-            actionStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            actionStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-            actionStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -20)
+            messageLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 24),
+            messageLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -24),
+            messageLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -32)
         ])
     }
 
@@ -106,7 +88,7 @@ class ShareViewController: UIViewController {
         guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
               let attachments = item.attachments else {
             print("No input items or attachments found")
-            showError(NSError(domain: "ShareExtension", code: 1, userInfo: [NSLocalizedDescriptionKey: "No content to share"]))
+            showError(message: "No content to share")
             return
         }
 
@@ -123,7 +105,7 @@ class ShareViewController: UIViewController {
                         self?.handleSharedURL(url)
                     } else {
                         print("Failed to extract URL from attachment: \(String(describing: error))")
-                        self?.showError(NSError(domain: "ShareExtension", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to extract URL"]))
+                        self?.showError(message: "Failed to extract URL")
                     }
                 }
                 return
@@ -138,11 +120,11 @@ class ShareViewController: UIViewController {
                             self?.handleSharedURL(url)
                         } else {
                             print("No valid URL found in text")
-                            self?.showError(NSError(domain: "ShareExtension", code: 3, userInfo: [NSLocalizedDescriptionKey: "No valid URL found"]))
+                            self?.showError(message: "No valid URL found")
                         }
                     } else {
                         print("Failed to extract text: \(String(describing: error))")
-                        self?.showError(NSError(domain: "ShareExtension", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to process content"]))
+                        self?.showError(message: "Failed to process content")
                     }
                 }
                 return
@@ -150,7 +132,7 @@ class ShareViewController: UIViewController {
         }
 
         print("No compatible attachment type found")
-        showError(NSError(domain: "ShareExtension", code: 5, userInfo: [NSLocalizedDescriptionKey: "Unsupported content type"]))
+        showError(message: "Unsupported content type")
     }
 
     private func extractURLFromText(_ text: String) -> URL? {
@@ -172,43 +154,43 @@ class ShareViewController: UIViewController {
 
     private func handleSharedURL(_ url: URL) {
         // Save to shared UserDefaults using app group
-        if let sharedDefaults = UserDefaults(suiteName: "group.erg.NuggetApp") {
-            // Get existing saved URLs or create new array
-            var savedURLs = sharedDefaults.array(forKey: "pendingNuggets") as? [[String: Any]] ?? []
-
-            // Extract title from the page if possible
-            let title = extractTitle(from: url)
-
-            // Create nugget data with more details
-            var nuggetData: [String: Any] = [
-                "url": url.absoluteString,
-                "title": title,
-                "createdAt": Date().timeIntervalSince1970,
-                "id": UUID().uuidString,
-                "sourceType": "share_extension"
-            ]
-
-            // Add category if available
-            if let category = categorizeURL(url) {
-                nuggetData["category"] = category
-            }
-
-            // Add to array
-            savedURLs.append(nuggetData)
-
-            // Save back to shared defaults
-            sharedDefaults.set(savedURLs, forKey: "pendingNuggets")
-            sharedDefaults.synchronize()
-
-            print("Saved URL to shared storage: \(url)")
-        } else {
+        guard let sharedDefaults = UserDefaults(suiteName: "group.erg.NuggetApp") else {
             print("Failed to access shared UserDefaults")
-            showError(NSError(domain: "ShareExtension", code: 6, userInfo: [NSLocalizedDescriptionKey: "Failed to save content"]))
+            showError(message: "Failed to save content")
             return
         }
 
+        // Get existing saved URLs or create new array
+        var savedURLs = sharedDefaults.array(forKey: "pendingNuggets") as? [[String: Any]] ?? []
+
+        // Extract title from the page if possible
+        let title = extractTitle(from: url)
+
+        // Create nugget data with more details
+        var nuggetData: [String: Any] = [
+            "url": url.absoluteString,
+            "title": title,
+            "createdAt": Date().timeIntervalSince1970,
+            "id": UUID().uuidString,
+            "sourceType": "share_extension"
+        ]
+
+        // Add category if available
+        if let category = categorizeURL(url) {
+            nuggetData["category"] = category
+        }
+
+        // Add to array
+        savedURLs.append(nuggetData)
+
+        // Save back to shared defaults
+        sharedDefaults.set(savedURLs, forKey: "pendingNuggets")
+        sharedDefaults.synchronize()
+
+        print("Saved URL to shared storage: \(url)")
+
         DispatchQueue.main.async {
-            self.showSuccess(for: url)
+            self.showSuccess()
         }
     }
 
@@ -234,7 +216,6 @@ class ShareViewController: UIViewController {
     }
 
     private func categorizeURL(_ url: URL) -> String? {
-        let urlString = url.absoluteString.lowercased()
         let host = url.host?.lowercased() ?? ""
 
         // LinkedIn
@@ -267,130 +248,48 @@ class ShareViewController: UIViewController {
         return nil
     }
 
-    private func showSuccess(for url: URL) {
+    private func showSuccess() {
         // Animate the success state
-        UIView.animate(withDuration: 0.3, animations: {
-            self.activityIndicator.alpha = 0
-        }) { _ in
-            self.activityIndicator.stopAnimating()
-
-            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5, options: [], animations: {
-                self.successImageView.alpha = 1
-                self.successImageView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
-            }) { _ in
-                UIView.animate(withDuration: 0.2) {
-                    self.successImageView.transform = .identity
-                }
-            }
-        }
+        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8, options: [], animations: {
+            self.checkmarkImageView.alpha = 1
+            self.checkmarkImageView.transform = .identity
+        })
 
         titleLabel.text = "Saved!"
-        messageLabel.text = "Article added to your Nugget inbox"
 
-        // Show action buttons
-        setupActionButtons(for: url)
+        UIView.animate(withDuration: 0.3, delay: 0.1, options: [], animations: {
+            self.messageLabel.alpha = 1
+        })
 
-        UIView.animate(withDuration: 0.3, delay: 0.2, options: [], animations: {
-            self.actionStackView.alpha = 1
-        }, completion: nil)
+        // Auto-dismiss after short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            self.dismiss()
+        }
     }
 
-    private func setupActionButtons(for url: URL) {
-        // Add and Process Now button
-        let processButton = createActionButton(title: "Process Now", style: .primary) { [weak self] in
-            self?.processNow()
-        }
-        actionStackView.addArrangedSubview(processButton)
+    private func showError(message: String) {
+        DispatchQueue.main.async {
+            self.titleLabel.text = "Oops!"
+            self.messageLabel.text = message
+            self.messageLabel.alpha = 1
 
-        // View in App button
-        let viewButton = createActionButton(title: "View in App", style: .secondary) { [weak self] in
-            self?.openInApp()
-        }
-        actionStackView.addArrangedSubview(viewButton)
+            // Show error icon
+            self.checkmarkImageView.image = UIImage(systemName: "xmark.circle.fill")
+            self.checkmarkImageView.tintColor = .systemRed
 
-        // Done button
-        let doneButton = createActionButton(title: "Done", style: .tertiary) { [weak self] in
-            self?.dismiss()
-        }
-        actionStackView.addArrangedSubview(doneButton)
-    }
-
-    private func createActionButton(title: String, style: ButtonStyle, action: @escaping () -> Void) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setTitle(title, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: style == .primary ? .semibold : .medium)
-        button.layer.cornerRadius = 12
-        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
-
-        switch style {
-        case .primary:
-            button.backgroundColor = .systemBlue
-            button.setTitleColor(.white, for: .normal)
-        case .secondary:
-            button.backgroundColor = .secondarySystemFill
-            button.setTitleColor(.label, for: .normal)
-        case .tertiary:
-            button.backgroundColor = .clear
-            button.setTitleColor(.secondaryLabel, for: .normal)
-        }
-
-        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-
-        return button
-    }
-
-    private enum ButtonStyle {
-        case primary, secondary, tertiary
-    }
-
-    private func processNow() {
-        // Mark the nugget for immediate processing
-        if let sharedDefaults = UserDefaults(suiteName: "group.erg.NuggetApp") {
-            sharedDefaults.set(true, forKey: "processImmediately")
-            sharedDefaults.synchronize()
-        }
-
-        // Open the app to process
-        openInApp()
-    }
-
-    private func openInApp() {
-        // Open the main app
-        if let url = URL(string: "nuggetapp://inbox") {
-            extensionContext?.open(url, completionHandler: { [weak self] success in
-                if success {
-                    self?.dismiss()
-                } else {
-                    // If custom URL scheme fails, just dismiss
-                    self?.dismiss()
-                }
+            UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.8, options: [], animations: {
+                self.checkmarkImageView.alpha = 1
+                self.checkmarkImageView.transform = .identity
             })
-        } else {
-            dismiss()
+
+            // Auto-dismiss after longer delay for errors
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.dismiss()
+            }
         }
     }
 
     private func dismiss() {
         extensionContext?.completeRequest(returningItems: nil)
-    }
-
-    private func showError(_ error: Error) {
-        DispatchQueue.main.async {
-            self.activityIndicator.stopAnimating()
-            self.activityIndicator.alpha = 0
-
-            self.titleLabel.text = "Error"
-            self.messageLabel.text = error.localizedDescription
-
-            // Show only Done button for errors
-            let doneButton = self.createActionButton(title: "OK", style: .primary) { [weak self] in
-                self?.dismiss()
-            }
-            self.actionStackView.addArrangedSubview(doneButton)
-
-            UIView.animate(withDuration: 0.3) {
-                self.actionStackView.alpha = 1
-            }
-        }
     }
 }
