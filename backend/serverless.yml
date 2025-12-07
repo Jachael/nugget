@@ -13,6 +13,7 @@ provider:
     NUGGET_USERS_TABLE: ${self:service}-users-${self:provider.stage}
     NUGGET_NUGGETS_TABLE: ${self:service}-nuggets-${self:provider.stage}
     NUGGET_SESSIONS_TABLE: ${self:service}-sessions-${self:provider.stage}
+    NUGGET_FEEDS_TABLE: ${self:service}-feeds-${self:provider.stage}
     JWT_SECRET: ${env:JWT_SECRET, 'dev-secret-change-in-production'}
     STAGE: ${self:provider.stage}
     COGNITO_USER_POOL_ID: eu-west-1_1zILS9mOj
@@ -36,6 +37,7 @@ provider:
             - !GetAtt UsersTable.Arn
             - !GetAtt NuggetsTable.Arn
             - !GetAtt SessionsTable.Arn
+            - !GetAtt FeedsTable.Arn
             - !Sub '${NuggetsTable.Arn}/index/*'
         - Effect: Allow
           Action:
@@ -175,6 +177,28 @@ functions:
     handler: dist/handlers/summariseNugget.handler
     timeout: 60
 
+  getFeeds:
+    handler: dist/handlers/getFeeds.handler
+    events:
+      - httpApi:
+          path: /v1/feeds
+          method: get
+
+  subscribeFeed:
+    handler: dist/handlers/subscribeFeed.handler
+    events:
+      - httpApi:
+          path: /v1/feeds/subscribe
+          method: post
+
+  fetchFeedContent:
+    handler: dist/handlers/fetchFeedContent.handler
+    timeout: 60
+    events:
+      - httpApi:
+          path: /v1/feeds/fetch
+          method: post
+
 resources:
   Resources:
     UsersTable:
@@ -240,6 +264,22 @@ resources:
           - AttributeName: userId
             KeyType: HASH
           - AttributeName: sessionId
+            KeyType: RANGE
+
+    FeedsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_FEEDS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: feedId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: feedId
             KeyType: RANGE
 
 plugins:

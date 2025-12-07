@@ -15,6 +15,12 @@ interface ArticleContent {
   url: string;
 }
 
+interface FeedArticle {
+  title: string;
+  link: string;
+  snippet: string;
+}
+
 export async function summariseGroupedContent(
   articles: ArticleContent[]
 ): Promise<LLMSummarisationResult> {
@@ -187,6 +193,89 @@ Respond ONLY with valid JSON in exactly this format (no other text):
       summary: title || 'Content saved for later review',
       keyPoints: ['Review this content when you have time'],
       question: 'What can you learn from this?',
+    };
+  }
+}
+
+/**
+ * Summarize multiple RSS feed items into a cohesive recap
+ */
+export async function summarizeFeedItems(
+  articles: FeedArticle[],
+  feedName: string
+): Promise<LLMSummarisationResult> {
+  if (articles.length === 0) {
+    throw new Error('No articles provided to summarize');
+  }
+
+  // Format articles for the prompt
+  const articlesText = articles.map((article, index) => {
+    return `${index + 1}. ${article.title}\n   ${article.snippet}\n   Link: ${article.link}`;
+  }).join('\n\n');
+
+  const prompt = `You are analyzing the latest articles from "${feedName}". Create a cohesive summary of the top stories.
+
+Articles:
+${articlesText}
+
+Respond ONLY with valid JSON in exactly this format (no other text):
+{
+  "title": "Today's Top Stories from ${feedName}",
+  "summary": "2-3 sentence summary of the main themes and most important stories",
+  "keyPoints": ["Most important story or trend 1", "Important story or trend 2", "Important story or trend 3", "Important story or trend 4"],
+  "question": "Thoughtful reflection question about these stories?"
+}`;
+
+  const payload = {
+    anthropic_version: 'bedrock-2023-05-31',
+    max_tokens: 1000,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+  };
+
+  try {
+    const command = new InvokeModelCommand({
+      modelId: MODEL_ID,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(payload),
+    });
+
+    const response = await client.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+
+    let textContent = responseBody.content[0].text;
+    console.log('Claude feed summary response:', textContent);
+
+    textContent = textContent.trim();
+    if (textContent.startsWith('```')) {
+      textContent = textContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+
+    const result = JSON.parse(textContent);
+
+    if (!result.title || !result.summary || !Array.isArray(result.keyPoints) || !result.question) {
+      throw new Error('Invalid response structure from LLM');
+    }
+
+    return {
+      title: result.title,
+      summary: result.summary,
+      keyPoints: result.keyPoints,
+      question: result.question,
+    };
+  } catch (error) {
+    console.error('Error calling Bedrock for feed summarization:', error);
+
+    return {
+      title: `Latest from ${feedName}`,
+      summary: `${articles.length} new articles available to read`,
+      keyPoints: articles.slice(0, 3).map(a => a.title),
+      question: 'What insights can you gain from these stories?',
     };
   }
 }
