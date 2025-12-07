@@ -1,6 +1,25 @@
 import SwiftUI
 
 struct MainTabView: View {
+    init() {
+        // Customize tab bar appearance
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+
+        // Make tab bar slightly more compact
+        appearance.stackedLayoutAppearance.normal.iconColor = UIColor.secondaryLabel
+        appearance.stackedLayoutAppearance.selected.iconColor = UIColor.label
+        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .medium)
+        ]
+        appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+        ]
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
+
     var body: some View {
         TabView {
             HomeView()
@@ -23,6 +42,7 @@ struct MainTabView: View {
                     Label("Profile", systemImage: "person.circle.fill")
                 }
         }
+        .tint(.primary)
     }
 }
 
