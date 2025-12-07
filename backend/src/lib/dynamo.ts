@@ -16,6 +16,8 @@ export const TableNames = {
   users: process.env.NUGGET_USERS_TABLE!,
   nuggets: process.env.NUGGET_NUGGETS_TABLE!,
   sessions: process.env.NUGGET_SESSIONS_TABLE!,
+  schedules: process.env.NUGGET_SCHEDULES_TABLE!,
+  deviceTokens: process.env.NUGGET_DEVICE_TOKENS_TABLE!,
 };
 
 export async function getItem<T>(tableName: string, key: Record<string, unknown>): Promise<T | null> {
