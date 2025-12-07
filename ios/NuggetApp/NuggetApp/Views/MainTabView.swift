@@ -32,6 +32,11 @@ struct MainTabView: View {
                     Label("Feed", systemImage: "list.bullet.rectangle.fill")
                 }
 
+            NuggetsListView()
+                .tabItem {
+                    Label("Nuggets", systemImage: "square.stack.3d.up.fill")
+                }
+
             AudioView()
                 .tabItem {
                     Label("Audio", systemImage: "waveform")
