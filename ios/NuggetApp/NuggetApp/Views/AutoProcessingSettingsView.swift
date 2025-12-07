@@ -221,7 +221,8 @@ struct AutoProcessingSettingsView: View {
     }
 
     private func isPremiumUser() -> Bool {
-        return authService.user?.preferences.subscriptionTier == .premium
+        let tier = authService.currentUser?.subscriptionTier ?? "free"
+        return tier == "plus" || tier == "pro"
     }
 
     private func loadCurrentSchedule() {
@@ -372,6 +373,6 @@ struct FeatureRow: View {
 struct AutoProcessingSettingsView_Previews: PreviewProvider {
     static var previews: some View {
         AutoProcessingSettingsView()
-            .environmentObject(AuthService.shared)
+            .environmentObject(AuthService())
     }
 }

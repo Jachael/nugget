@@ -2,7 +2,7 @@ import SwiftUI
 
 struct RSSFeedsView: View {
     @EnvironmentObject var authService: AuthService
-    @State private var feeds: [RSSFeed] = []
+    @State private var feeds: [CatalogFeed] = []
     @State private var subscriptions: [FeedSubscription] = []
     @State private var isLoading = true
     @State private var isFetching = false
@@ -12,7 +12,8 @@ struct RSSFeedsView: View {
     @State private var selectedCategory: String?
 
     private var isPremium: Bool {
-        authService.currentUser?.preferences?.subscriptionTier == "premium"
+        let tier = authService.currentUser?.subscriptionTier ?? "free"
+        return tier == "pro"
     }
 
     private var categories: [String] {
@@ -20,7 +21,7 @@ struct RSSFeedsView: View {
         return Array(allCategories).sorted()
     }
 
-    private var filteredFeeds: [RSSFeed] {
+    private var filteredFeeds: [CatalogFeed] {
         if let category = selectedCategory {
             return feeds.filter { $0.category == category }
         }
@@ -183,7 +184,7 @@ struct RSSFeedsView: View {
         }
     }
 
-    private func toggleSubscription(feed: RSSFeed) async {
+    private func toggleSubscription(feed: CatalogFeed) async {
         // Check premium requirement
         if feed.isPremium && !isPremium && !feed.isSubscribed {
             showingUpgradePrompt = true
@@ -237,7 +238,7 @@ struct RSSFeedsView: View {
 
 // MARK: - Feed Row
 struct FeedRow: View {
-    let feed: RSSFeed
+    let feed: CatalogFeed
     let isPremium: Bool
     let onToggle: () -> Void
 

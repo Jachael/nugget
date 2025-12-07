@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - Feed Models
-struct RSSFeed: Identifiable, Codable {
+struct CatalogFeed: Identifiable, Codable {
     let id: String
     let name: String
     let url: String
@@ -23,7 +23,7 @@ struct FeedSubscription: Identifiable, Codable {
 }
 
 struct GetFeedsResponse: Codable {
-    let catalog: [RSSFeed]
+    let catalog: [CatalogFeed]
     let subscriptions: [FeedSubscription]
 }
 
@@ -65,40 +65,43 @@ final class FeedService {
 
     /// Get all available feeds and user's subscriptions
     func getFeeds() async throws -> GetFeedsResponse {
-        let response: GetFeedsResponse = try await APIClient.shared.request(
-            endpoint: "/v1/feeds",
-            method: "GET"
+        return try await APIClient.shared.send(
+            path: "/feeds",
+            method: "GET",
+            requiresAuth: true,
+            responseType: GetFeedsResponse.self
         )
-        return response
     }
 
     /// Subscribe or unsubscribe from a feed
     func subscribeFeed(rssFeedId: String, subscribe: Bool) async throws -> SubscribeFeedResponse {
         let request = SubscribeFeedRequest(rssFeedId: rssFeedId, subscribe: subscribe)
-        let response: SubscribeFeedResponse = try await APIClient.shared.request(
-            endpoint: "/v1/feeds/subscribe",
+        return try await APIClient.shared.send(
+            path: "/feeds/subscribe",
             method: "POST",
-            body: request
+            body: request,
+            requiresAuth: true,
+            responseType: SubscribeFeedResponse.self
         )
-        return response
     }
 
     /// Fetch latest content from subscribed feeds
     func fetchFeedContent(feedId: String? = nil) async throws -> FetchFeedContentResponse {
-        var endpoint = "/v1/feeds/fetch"
+        var path = "/feeds/fetch"
         if let feedId = feedId {
-            endpoint += "?feedId=\(feedId)"
+            path += "?feedId=\(feedId)"
         }
 
-        let response: FetchFeedContentResponse = try await APIClient.shared.request(
-            endpoint: endpoint,
-            method: "POST"
+        return try await APIClient.shared.send(
+            path: path,
+            method: "POST",
+            requiresAuth: true,
+            responseType: FetchFeedContentResponse.self
         )
-        return response
     }
 
     /// Get feeds grouped by category
-    func getFeedsByCategory(_ feeds: [RSSFeed]) -> [String: [RSSFeed]] {
+    func getFeedsByCategory(_ feeds: [CatalogFeed]) -> [String: [CatalogFeed]] {
         Dictionary(grouping: feeds, by: { $0.category })
     }
 }

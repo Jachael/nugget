@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import UIKit
 
 enum NotificationCategory: String {
     case nuggetsReady = "NUGGETS_READY"
@@ -81,7 +82,7 @@ class PushNotificationService: NSObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // Get access token from keychain
-        if let accessToken = KeychainManager.shared.get(key: KeychainManager.Keys.accessToken) {
+        if let accessToken = KeychainManager.shared.getToken() {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -109,17 +110,16 @@ class PushNotificationService: NSObject {
         print("Received foreground notification: \(userInfo)")
 
         // Handle different notification types
-        if let category = notification.request.content.categoryIdentifier {
-            switch category {
-            case NotificationCategory.nuggetsReady.rawValue:
-                handleNuggetsReadyNotification(userInfo: userInfo)
-            case NotificationCategory.streakReminder.rawValue:
-                handleStreakReminderNotification(userInfo: userInfo)
-            case NotificationCategory.newContent.rawValue:
-                handleNewContentNotification(userInfo: userInfo)
-            default:
-                break
-            }
+        let category = notification.request.content.categoryIdentifier
+        switch category {
+        case NotificationCategory.nuggetsReady.rawValue:
+            handleNuggetsReadyNotification(userInfo: userInfo)
+        case NotificationCategory.streakReminder.rawValue:
+            handleStreakReminderNotification(userInfo: userInfo)
+        case NotificationCategory.newContent.rawValue:
+            handleNewContentNotification(userInfo: userInfo)
+        default:
+            break
         }
     }
 
@@ -129,17 +129,16 @@ class PushNotificationService: NSObject {
         print("User tapped notification: \(userInfo)")
 
         // Handle different notification types
-        if let category = response.notification.request.content.categoryIdentifier {
-            switch category {
-            case NotificationCategory.nuggetsReady.rawValue:
-                handleNuggetsReadyNotification(userInfo: userInfo)
-            case NotificationCategory.streakReminder.rawValue:
-                handleStreakReminderNotification(userInfo: userInfo)
-            case NotificationCategory.newContent.rawValue:
-                handleNewContentNotification(userInfo: userInfo)
-            default:
-                break
-            }
+        let category = response.notification.request.content.categoryIdentifier
+        switch category {
+        case NotificationCategory.nuggetsReady.rawValue:
+            handleNuggetsReadyNotification(userInfo: userInfo)
+        case NotificationCategory.streakReminder.rawValue:
+            handleStreakReminderNotification(userInfo: userInfo)
+        case NotificationCategory.newContent.rawValue:
+            handleNewContentNotification(userInfo: userInfo)
+        default:
+            break
         }
     }
 

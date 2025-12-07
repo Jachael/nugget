@@ -129,6 +129,8 @@ final class AuthService: ObservableObject {
         let streak: Int
         let lastActiveDate: String
         let firstName: String?
+        let subscriptionTier: String?
+        let subscriptionExpiresAt: String?
     }
 
     private func fetchUserProfile() async throws -> AuthResponse {
@@ -144,7 +146,9 @@ final class AuthService: ObservableObject {
             userId: profile.userId,
             accessToken: "", // Not needed for this use case
             streak: profile.streak,
-            firstName: profile.firstName
+            firstName: profile.firstName,
+            subscriptionTier: profile.subscriptionTier,
+            subscriptionExpiresAt: profile.subscriptionExpiresAt
         )
     }
 
