@@ -129,85 +129,12 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Fixed Header (not affected by pull-to-refresh)
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Nugget \(SparkSymbol.spark)")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundColor(.primary)
-
-                    HStack {
-                        Text("\(timeBasedGreeting), \(username)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-
-                        Spacer()
-
-                        // Clickable streak on the right - restored original design
-                        Button {
-                            showStats = true
-                            HapticFeedback.selection()
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "square.stack.3d.up.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.orange)
-                                if (authService.currentUser?.streak ?? 0) == 0 {
-                                    Text("0 day streak")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                } else {
-                                    Text("\(authService.currentUser?.streak ?? 0)")
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                        .foregroundColor(.primary)
-                                    Text("days")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Search bar for Smart Processing - Always visible
-                    Button {
-                        showSmartProcess = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 16))
-                                .foregroundColor(.secondary)
-
-                            Text(unprocessedCount > 0 ? "Search \(unprocessedCount) saved items..." : "Search your library...")
-                                .font(.system(size: 15))
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary.opacity(0.6))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14) // Increased from 10 to 14
-                        .contentShape(Rectangle())
-                        .glassEffect(in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 8)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
-                .background(Color(UIColor.systemBackground))
-
-                // Scrollable content (affected by pull-to-refresh)
+            ZStack(alignment: .top) {
+                // Scrollable content (behind the header)
                 ScrollView {
                     VStack(spacing: 24) {
+                        // Spacer for fixed header area (increased for more spacing below search bar)
+                        Color.clear.frame(height: 160)
 
                     // Error message with auto-dismiss
                     if let error = errorMessage {
@@ -250,7 +177,7 @@ struct HomeView: View {
 
                     // Dynamic content tiles - always show this section
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Ready to Learn")
+                        Text("Ready to read?")
                             .font(.title3.bold())
                             .padding(.horizontal)
 
@@ -336,6 +263,76 @@ struct HomeView: View {
                     await loadNuggetsAsync()
                     await syncPendingNuggets()
                 }
+
+                // Floating header - opaque top section, liquid glass search bar
+                VStack(alignment: .leading, spacing: 0) {
+                    // Opaque section (title, greeting) - content hidden behind this
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Nugget \(SparkSymbol.spark)")
+                                .font(.system(size: 34, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            Spacer()
+
+                            // Streak button inline with title (circle)
+                            Button {
+                                showStats = true
+                                HapticFeedback.selection()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles.rectangle.stack.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.orange)
+                                    Text("\(authService.currentUser?.streak ?? 0)")
+                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.primary)
+                                }
+                                .frame(width: 56, height: 56)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Text("\(timeBasedGreeting), \(username)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(UIColor.systemBackground))
+
+                    // Search bar with liquid glass (content scrolls through this)
+                    Button {
+                        showSmartProcess = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
+
+                            Text(unprocessedCount > 0 ? "Search \(unprocessedCount) saved items..." : "Search your library...")
+                                .font(.system(size: 15))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                        .glassEffect(in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .navigationTitle("")
             .navigationDestination(item: $session) { session in

@@ -633,15 +633,21 @@ struct OverviewCard: View {
                     .padding(.top, 8) // Extra top padding for close button area
                 }
 
-                // Bottom hint - compact version
+                // Bottom hint - compact version with icons
                 HStack(spacing: 8) {
                     if sourceCount > 1 {
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                         Text("\(sourceCount) sources")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                         Text("•")
                             .foregroundColor(.secondary.opacity(0.5))
                     }
+                    Image(systemName: "hand.draw.fill")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                     Text("Swipe to continue")
                         .font(.caption2)
                         .foregroundColor(.secondary)
@@ -811,13 +817,19 @@ struct IndividualArticleCard: View {
                     .padding(.top, 8) // Extra top padding for close button area
                 }
 
-                // Bottom hint - compact version
+                // Bottom hint - compact version with icons
                 HStack(spacing: 8) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                     Text("Tap to open")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                     Text("•")
                         .foregroundColor(.secondary.opacity(0.5))
+                    Image(systemName: "hand.draw.fill")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                     Text(index == total ? "Swipe to complete" : "Swipe for next")
                         .font(.caption2)
                         .foregroundColor(.secondary)
