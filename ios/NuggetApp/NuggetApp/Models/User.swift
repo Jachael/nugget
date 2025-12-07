@@ -5,6 +5,8 @@ struct User: Codable {
     let accessToken: String
     let streak: Int
     let firstName: String?
+    let subscriptionTier: String?
+    let subscriptionExpiresAt: String?
 }
 
 struct AuthResponse: Codable {
@@ -12,4 +14,6 @@ struct AuthResponse: Codable {
     let accessToken: String
     let streak: Int
     let firstName: String?
+    let subscriptionTier: String?
+    let subscriptionExpiresAt: String?
 }

@@ -22,6 +22,11 @@ export interface User {
   preferences?: UserPreferences;
   onboardingCompleted?: boolean;
   settings?: Record<string, unknown>;
+  // Subscription fields
+  subscriptionTier?: 'free' | 'plus' | 'pro';
+  subscriptionExpiresAt?: string; // ISO date string
+  originalTransactionId?: string;
+  lastReceiptVerification?: number; // Timestamp of last verification
 }
 
 export interface Nugget {
@@ -90,6 +95,8 @@ export interface AuthResponse {
   accessToken: string;
   streak: number;
   firstName?: string;
+  subscriptionTier?: string;
+  subscriptionExpiresAt?: string;
 }
 
 export interface NuggetResponse {

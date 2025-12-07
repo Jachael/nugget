@@ -13,6 +13,8 @@ provider:
     NUGGET_USERS_TABLE: ${self:service}-users-${self:provider.stage}
     NUGGET_NUGGETS_TABLE: ${self:service}-nuggets-${self:provider.stage}
     NUGGET_SESSIONS_TABLE: ${self:service}-sessions-${self:provider.stage}
+    NUGGET_SCHEDULES_TABLE: ${self:service}-schedules-${self:provider.stage}
+    NUGGET_DEVICE_TOKENS_TABLE: ${self:service}-device-tokens-${self:provider.stage}
     JWT_SECRET: ${env:JWT_SECRET, 'dev-secret-change-in-production'}
     STAGE: ${self:provider.stage}
     COGNITO_USER_POOL_ID: eu-west-1_1zILS9mOj
@@ -20,6 +22,10 @@ provider:
     USE_COGNITO: 'true'
     APPLE_CLIENT_ID: NuggetApp
     GOOGLE_CLIENT_ID: ${env:GOOGLE_CLIENT_ID, ''}
+    IOS_PLATFORM_APPLICATION_ARN: ${env:IOS_PLATFORM_APPLICATION_ARN, ''}
+    ANDROID_PLATFORM_APPLICATION_ARN: ${env:ANDROID_PLATFORM_APPLICATION_ARN, ''}
+    AWS_ACCOUNT_ID: ${aws:accountId}
+    EVENTBRIDGE_SCHEDULER_ROLE_ARN: !GetAtt EventBridgeSchedulerRole.Arn
   iam:
     role:
       statements:
@@ -36,6 +42,8 @@ provider:
             - !GetAtt UsersTable.Arn
             - !GetAtt NuggetsTable.Arn
             - !GetAtt SessionsTable.Arn
+            - !GetAtt SchedulesTable.Arn
+            - !GetAtt DeviceTokensTable.Arn
             - !Sub '${NuggetsTable.Arn}/index/*'
         - Effect: Allow
           Action:
@@ -48,6 +56,28 @@ provider:
             - lambda:InvokeFunction
           Resource:
             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-summariseNugget'
+        - Effect: Allow
+          Action:
+            - scheduler:CreateSchedule
+            - scheduler:UpdateSchedule
+            - scheduler:DeleteSchedule
+            - scheduler:GetSchedule
+          Resource:
+            - !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/nugget-auto-process-*'
+        - Effect: Allow
+          Action:
+            - sns:CreatePlatformEndpoint
+            - sns:DeleteEndpoint
+            - sns:Publish
+            - sns:GetEndpointAttributes
+            - sns:SetEndpointAttributes
+          Resource:
+            - '*'
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource:
+            - !GetAtt EventBridgeSchedulerRole.Arn
 
 functions:
   authApple:
@@ -175,6 +205,26 @@ functions:
     handler: dist/handlers/summariseNugget.handler
     timeout: 60
 
+  verifySubscription:
+    handler: dist/handlers/verifySubscription.handler
+    events:
+      - httpApi:
+          path: /v1/subscriptions/verify
+          method: post
+
+  setProcessingSchedule:
+    handler: dist/handlers/setProcessingSchedule.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/processing/schedule
+          method: post
+
+  autoProcessNuggets:
+    handler: dist/handlers/autoProcessNuggets.handler
+    timeout: 300
+    # Invoked by EventBridge Scheduler - no HTTP events
+
 resources:
   Resources:
     UsersTable:
@@ -241,6 +291,45 @@ resources:
             KeyType: HASH
           - AttributeName: sessionId
             KeyType: RANGE
+
+    SchedulesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_SCHEDULES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: scheduleId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: scheduleId
+            KeyType: RANGE
+
+    # IAM role for EventBridge Scheduler to invoke Lambda
+    EventBridgeSchedulerRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:service}-${self:provider.stage}-eventbridge-scheduler-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: scheduler.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: InvokeLambda
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource:
+                    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-autoProcessNuggets'
 
 plugins:
   - serverless-offline
