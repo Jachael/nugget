@@ -87,6 +87,8 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       accessToken,
       streak: user.streak,
       firstName: user.firstName,
+      subscriptionTier: user.subscriptionTier || 'free',
+      subscriptionExpiresAt: user.subscriptionExpiresAt,
     };
 
     return {

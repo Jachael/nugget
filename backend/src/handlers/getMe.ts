@@ -47,6 +47,8 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         streak,
         lastActiveDate,
         firstName: user.firstName,
+        subscriptionTier: user.subscriptionTier || 'free',
+        subscriptionExpiresAt: user.subscriptionExpiresAt,
       }),
     };
   } catch (error) {
