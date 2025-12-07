@@ -27,6 +27,9 @@ export interface User {
   subscriptionExpiresAt?: string; // ISO date string
   originalTransactionId?: string;
   lastReceiptVerification?: number; // Timestamp of last verification
+  // Auto-processing fields
+  autoProcessEnabled?: boolean;
+  processingScheduleId?: string;
 }
 
 export interface Nugget {
@@ -238,4 +241,28 @@ export interface GetFeedsResponse {
     isSubscribed: boolean;
   }>;
   subscriptions: FeedSubscriptionResponse[];
+}
+
+// Processing Schedule Models
+export interface ProcessingSchedule {
+  userId: string;
+  scheduleId: string;
+  frequency: 'daily' | 'twice_daily' | 'weekly';
+  preferredTime: string; // "09:00" format
+  timezone: string;
+  enabled: boolean;
+  lastRun?: string;
+  nextRun?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Device Token Models
+export interface DeviceToken {
+  userId: string;
+  deviceToken: string;
+  platform: 'ios' | 'android';
+  endpointArn?: string;
+  createdAt: number;
+  updatedAt: number;
 }

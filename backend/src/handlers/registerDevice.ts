@@ -1,5 +1,5 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { authenticate } from '../lib/auth';
+import { extractUserId } from '../lib/auth';
 import { registerDeviceToken, unregisterDeviceToken } from '../lib/notifications';
 
 interface RegisterDeviceRequest {
@@ -11,7 +11,7 @@ interface RegisterDeviceRequest {
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {
     // Authenticate the request
-    const userId = await authenticate(event);
+    const userId = await extractUserId(event);
     if (!userId) {
       return {
         statusCode: 401,

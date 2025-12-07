@@ -115,7 +115,7 @@ export function getDailyNuggetLimit(user: User): number {
  * Verify Apple App Store receipt (stub - needs actual implementation)
  * In production, this should call Apple's App Store Server API
  */
-export async function verifyAppleReceipt(receiptData: string): Promise<{
+export async function verifyAppleReceipt(_receiptData: string): Promise<{
   valid: boolean;
   transactionId?: string;
   productId?: string;

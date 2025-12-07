@@ -1,5 +1,5 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { authenticate } from '../lib/auth';
+import { extractUserId } from '../lib/auth';
 import { getItem, updateItem, TableNames } from '../lib/dynamo';
 import { User } from '../lib/models';
 import {
@@ -26,7 +26,7 @@ export async function handler(
 ): Promise<APIGatewayProxyResultV2> {
   try {
     // Authenticate user
-    const userId = authenticate(event);
+    const userId = await extractUserId(event);
     if (!userId) {
       return {
         statusCode: 401,

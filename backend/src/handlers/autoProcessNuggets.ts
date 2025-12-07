@@ -4,7 +4,7 @@ import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { v4 as uuidv4 } from 'uuid';
 import { getItem, queryItems, putItem, updateItem, TableNames } from '../lib/dynamo';
 import { User, Nugget, ProcessingSchedule, DeviceToken } from '../lib/models';
-import { groupNuggetsByCategory, createProcessingBatches } from '../lib/smartGrouping';
+import { createProcessingBatches } from '../lib/smartGrouping';
 
 const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'eu-west-1' });
 const sns = new SNSClient({ region: process.env.AWS_REGION || 'eu-west-1' });
@@ -218,7 +218,7 @@ export async function handler(event: EventBridgeEvent<string, AutoProcessEvent>)
 /**
  * Calculate next run time based on schedule
  */
-function calculateNextRun(frequency: string, preferredTime: string, timezone: string): number {
+function calculateNextRun(frequency: string, preferredTime: string, _timezone: string): number {
   const now = new Date();
   const [hours, minutes] = preferredTime.split(':').map(Number);
 

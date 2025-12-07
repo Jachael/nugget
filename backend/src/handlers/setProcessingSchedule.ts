@@ -17,7 +17,7 @@ interface SetScheduleRequest {
 /**
  * Calculate next run time based on schedule
  */
-function calculateNextRun(frequency: string, preferredTime: string, timezone: string): number {
+function calculateNextRun(frequency: string, preferredTime: string, _timezone: string): number {
   const now = new Date();
   const [hours, minutes] = preferredTime.split(':').map(Number);
 
@@ -40,7 +40,7 @@ function calculateNextRun(frequency: string, preferredTime: string, timezone: st
 /**
  * Convert frequency to EventBridge cron expression
  */
-function frequencyToCron(frequency: string, preferredTime: string, timezone: string): string {
+function frequencyToCron(frequency: string, preferredTime: string, _timezone: string): string {
   const [hours, minutes] = preferredTime.split(':').map(Number);
 
   switch (frequency) {
@@ -105,7 +105,6 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     // If disabling, delete the schedule
     if (!request.enabled) {
       if (user.processingScheduleId) {
-        const scheduleTableName = process.env.NUGGET_SCHEDULES_TABLE || `nugget-schedules-${process.env.STAGE || 'dev'}`;
         const scheduleName = `nugget-auto-process-${userId}`;
 
         try {
@@ -155,7 +154,8 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     const scheduleTableName = process.env.NUGGET_SCHEDULES_TABLE || `nugget-schedules-${process.env.STAGE || 'dev'}`;
     const now = Math.floor(Date.now() / 1000);
     const scheduleId = user.processingScheduleId || `schedule-${uuidv4()}`;
-    const nextRun = calculateNextRun(request.frequency, request.preferredTime, request.timezone);
+    const nextRunTimestamp = calculateNextRun(request.frequency, request.preferredTime, request.timezone);
+    const nextRun = new Date(nextRunTimestamp * 1000).toISOString();
 
     // Create or update schedule record
     const schedule: ProcessingSchedule = {
@@ -234,7 +234,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
           preferredTime: request.preferredTime,
           timezone: request.timezone,
           enabled: true,
-          nextRun: new Date(nextRun * 1000).toISOString(),
+          nextRun,
         },
       }),
     };

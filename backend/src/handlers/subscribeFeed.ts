@@ -1,5 +1,5 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as _uuidv4 } from 'uuid';
 import { extractUserId } from '../lib/auth';
 import { putItem, getItem, deleteItem, TableNames } from '../lib/dynamo';
 import { SubscribeFeedInput, UserFeedSubscription, User } from '../lib/models';
