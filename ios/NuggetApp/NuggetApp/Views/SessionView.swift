@@ -70,24 +70,15 @@ struct SessionView: View {
                     cards: Array(cards[currentCardIndex...]),
                     onNext: handleNextCard,
                     onSkip: handleSkip,
-                    onBack: handleBack
+                    onBack: handleBack,
+                    onClose: { completeSession() }
                 )
             } else {
                 sessionCompleteView
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    completeSession()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
         .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             startPollingIfNeeded()
         }
@@ -312,6 +303,7 @@ struct CardStackView: View {
     let onNext: () -> Void
     let onSkip: () -> Void
     let onBack: () -> Void
+    let onClose: () -> Void
 
     @State private var offset = CGSize.zero
     @State private var selectedArticle: ArticleToOpen?
@@ -321,14 +313,14 @@ struct CardStackView: View {
             ZStack {
                 // Background cards for depth effect
                 if cards.count > 2 {
-                    cardView(for: cards[2], geometry: geometry)
+                    cardView(for: cards[2], geometry: geometry, showCloseButton: false)
                         .scaleEffect(0.90)
                         .offset(y: 16)
                         .opacity(0.3)
                 }
 
                 if cards.count > 1 {
-                    cardView(for: cards[1], geometry: geometry)
+                    cardView(for: cards[1], geometry: geometry, showCloseButton: false)
                         .scaleEffect(0.95)
                         .offset(y: 8)
                         .opacity(0.6)
@@ -336,7 +328,7 @@ struct CardStackView: View {
 
                 // Top card (current)
                 if let currentCard = cards.first {
-                    cardView(for: currentCard, geometry: geometry)
+                    cardView(for: currentCard, geometry: geometry, showCloseButton: true)
                         .offset(offset)
                         .rotationEffect(.degrees(Double(offset.width / 30)))
                         .contentShape(Rectangle())
@@ -374,8 +366,9 @@ struct CardStackView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 40)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
         #if os(macOS)
         .sheet(item: $selectedArticle) { article in
             ArticleWebView(url: article.url, title: article.title)
@@ -394,18 +387,20 @@ struct CardStackView: View {
     }
 
     @ViewBuilder
-    private func cardView(for card: CardData, geometry: GeometryProxy) -> some View {
+    private func cardView(for card: CardData, geometry: GeometryProxy, showCloseButton: Bool) -> some View {
         switch card.cardType {
         case .single, .groupOverview:
             OverviewCard(
                 nugget: card.nugget,
                 geometry: geometry,
+                showCloseButton: showCloseButton,
                 onOpenArticle: { url, title in
                     print("🔗 SessionView: Opening article - URL: \(url.absoluteString)")
                     print("🔗 SessionView: Title: \(title ?? "nil")")
                     selectedArticle = ArticleToOpen(url: url, title: title)
                     print("🔗 SessionView: selectedArticle set to \(selectedArticle?.id.uuidString ?? "nil")")
-                }
+                },
+                onClose: onClose
             )
 
         case .individualArticle(let summary, let index, let total):
@@ -414,12 +409,14 @@ struct CardStackView: View {
                 index: index + 1,
                 total: total,
                 geometry: geometry,
+                showCloseButton: showCloseButton,
                 onOpenArticle: { url, title in
                     print("🔗 SessionView (Individual): Opening article - URL: \(url.absoluteString)")
                     print("🔗 SessionView (Individual): Title: \(title ?? "nil")")
                     selectedArticle = ArticleToOpen(url: url, title: title)
                     print("🔗 SessionView (Individual): selectedArticle set to \(selectedArticle?.id.uuidString ?? "nil")")
-                }
+                },
+                onClose: onClose
             )
         }
     }
@@ -490,7 +487,9 @@ struct CardStackView: View {
 struct OverviewCard: View {
     let nugget: Nugget
     let geometry: GeometryProxy
+    let showCloseButton: Bool
     let onOpenArticle: (URL, String?) -> Void
+    let onClose: () -> Void
 
     var sourceCount: Int {
         nugget.sourceUrls?.count ?? 1
@@ -514,22 +513,24 @@ struct OverviewCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 28) {
-                    // Category badge
-                    if let category = nugget.category {
-                        HStack {
-                            Text(category.uppercased())
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.primary.opacity(0.6))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(Color.primary.opacity(0.08)))
-                            Spacer()
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 28) {
+                        // Category badge
+                        if let category = nugget.category {
+                            HStack {
+                                Text(category.uppercased())
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.primary.opacity(0.6))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+                                Spacer()
+                            }
+                            .padding(.trailing, 44) // Make room for close button
                         }
-                    }
 
                     // Title
                     Text(displayTitle)
@@ -628,62 +629,61 @@ struct OverviewCard: View {
                         }
                     }
                 }
-                .padding(28)
-            }
-
-            // Bottom hint
-            VStack(spacing: 12) {
-                Divider().opacity(0.3)
-
-                HStack(spacing: 16) {
-                    if sourceCount > 1 {
-                        HStack(spacing: 6) {
-                            Image(systemName: "doc.on.doc.fill")
-                                .font(.caption2)
-                            Text("\(sourceCount) sources")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundColor(.primary.opacity(0.7))
-
-                        Circle()
-                            .fill(Color.secondary.opacity(0.3))
-                            .frame(width: 4, height: 4)
-                    }
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "hand.draw.fill")
-                            .font(.caption2)
-                        Text("Swipe right for details")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.secondary)
+                    .padding(28)
+                    .padding(.top, 8) // Extra top padding for close button area
                 }
-                .padding(.vertical, 8)
+
+                // Bottom hint - compact version
+                HStack(spacing: 8) {
+                    if sourceCount > 1 {
+                        Text("\(sourceCount) sources")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("•")
+                            .foregroundColor(.secondary.opacity(0.5))
+                    }
+                    Text("Swipe to continue")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 10)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 20)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onTapGesture {
-            if let url = URL(string: nugget.sourceUrl) {
-                onOpenArticle(url, nugget.title)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onTapGesture {
+                if let url = URL(string: nugget.sourceUrl) {
+                    onOpenArticle(url, nugget.title)
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 32).fill(.ultraThinMaterial))
+            .overlay(
+                RoundedRectangle(cornerRadius: 32)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.primary.opacity(0.15), Color.primary.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 30, x: 0, y: 15)
+            .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
+
+            // Close button - fixed in top right corner
+            if showCloseButton {
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(.ultraThinMaterial))
+                }
+                .padding(20)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 32).fill(.ultraThinMaterial))
-        .overlay(
-            RoundedRectangle(cornerRadius: 32)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.primary.opacity(0.15), Color.primary.opacity(0.05)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 30, x: 0, y: 15)
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -694,25 +694,29 @@ struct IndividualArticleCard: View {
     let index: Int
     let total: Int
     let geometry: GeometryProxy
+    let showCloseButton: Bool
     let onOpenArticle: (URL, String?) -> Void
+    let onClose: () -> Void
 
     var urlHost: String {
         URL(string: summary.sourceUrl)?.host ?? summary.sourceUrl
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 28) {
-                    // Article indicator
-                    HStack {
-                        Text("Article \(index) of \(total)")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
-                            .textCase(.uppercase)
-                        Spacer()
-                    }
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 28) {
+                        // Article indicator
+                        HStack {
+                            Text("Article \(index) of \(total)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                            Spacer()
+                        }
+                        .padding(.trailing, 44) // Make room for close button
 
                     // Title
                     if !summary.title.isEmpty {
@@ -802,59 +806,59 @@ struct IndividualArticleCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.blue.opacity(0.2), lineWidth: 0.5))
-                }
-                .padding(28)
-            }
-
-            // Bottom hint
-            VStack(spacing: 12) {
-                Divider().opacity(0.3)
-
-                HStack(spacing: 16) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "hand.tap.fill")
-                            .font(.caption2)
-                        Text("Tap to open")
-                            .font(.caption)
                     }
-                    .foregroundColor(.secondary)
-
-                    Circle()
-                        .fill(Color.secondary.opacity(0.3))
-                        .frame(width: 4, height: 4)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "hand.draw.fill")
-                            .font(.caption2)
-                        Text(index == total ? "Swipe to complete" : "Swipe for next")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.secondary)
+                    .padding(28)
+                    .padding(.top, 8) // Extra top padding for close button area
                 }
-                .padding(.vertical, 8)
+
+                // Bottom hint - compact version
+                HStack(spacing: 8) {
+                    Text("Tap to open")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("•")
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text(index == total ? "Swipe to complete" : "Swipe for next")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 10)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 20)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onTapGesture {
-            if let url = URL(string: summary.sourceUrl) {
-                onOpenArticle(url, summary.title)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onTapGesture {
+                if let url = URL(string: summary.sourceUrl) {
+                    onOpenArticle(url, summary.title)
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 32).fill(.ultraThinMaterial))
+            .overlay(
+                RoundedRectangle(cornerRadius: 32)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.primary.opacity(0.15), Color.primary.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 30, x: 0, y: 15)
+            .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
+
+            // Close button - fixed in top right corner
+            if showCloseButton {
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(.ultraThinMaterial))
+                }
+                .padding(20)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 32).fill(.ultraThinMaterial))
-        .overlay(
-            RoundedRectangle(cornerRadius: 32)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.primary.opacity(0.15), Color.primary.opacity(0.05)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 30, x: 0, y: 15)
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 5)
     }
 }
