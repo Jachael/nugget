@@ -94,6 +94,10 @@ final class APIClient {
 
             guard (200..<300).contains(httpResponse.statusCode) else {
                 if httpResponse.statusCode == 401 {
+                    // Post notification for global 401 handling (auto sign-out)
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .apiUnauthorized, object: nil)
+                    }
                     throw APIError.unauthorized
                 }
                 let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"

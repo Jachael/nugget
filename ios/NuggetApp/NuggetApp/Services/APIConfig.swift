@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let apiUnauthorized = Notification.Name("apiUnauthorized")
+}
+
 struct APIConfig {
     static var baseURL: URL {
         // For dev/testing, this can be overridden via environment variable

@@ -4,7 +4,48 @@ import AuthenticationServices
 enum AuthError: Error {
     case invalidCredentials
     case networkError
+    case tokenExpired
     case unknown
+}
+
+// JWT Token Helper for decoding and validating tokens
+struct JWTHelper {
+    static func decode(_ token: String) -> [String: Any]? {
+        let segments = token.components(separatedBy: ".")
+        guard segments.count > 1 else { return nil }
+
+        // Decode the payload (second segment)
+        var base64 = segments[1]
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+
+        // Add padding if needed
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        return json
+    }
+
+    static func isTokenExpired(_ token: String, bufferSeconds: TimeInterval = 60) -> Bool {
+        guard let payload = decode(token),
+              let exp = payload["exp"] as? TimeInterval else {
+            // If we can't decode or find exp, treat as expired for safety
+            return true
+        }
+
+        let expirationDate = Date(timeIntervalSince1970: exp)
+        let now = Date()
+
+        // Add a buffer to expire tokens slightly early to avoid edge cases
+        return expirationDate.addingTimeInterval(-bufferSeconds) <= now
+    }
 }
 
 final class AuthService: ObservableObject {
@@ -13,12 +54,39 @@ final class AuthService: ObservableObject {
 
     init() {
         checkAuthStatus()
+
+        // Listen for unauthorized errors from API (401 responses)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleUnauthorized),
+            name: .apiUnauthorized,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleUnauthorized() {
+        Task { @MainActor in
+            print("Received 401 unauthorized - signing out")
+            self.signOut()
+        }
     }
 
     func checkAuthStatus() {
         if let token = KeychainManager.shared.getToken(),
            let userId = KeychainManager.shared.getUserId() {
-            // Token exists, user is authenticated
+
+            // Check if token is expired before considering user authenticated
+            if JWTHelper.isTokenExpired(token) {
+                print("Token is expired, signing out")
+                signOut()
+                return
+            }
+
+            // Token exists and is valid, user is authenticated
             isAuthenticated = true
 
             // Fetch user profile to get streak
@@ -35,14 +103,21 @@ final class AuthService: ObservableObject {
                     }
                 } catch {
                     print("Failed to fetch user profile: \(error)")
-                    // Still authenticated, just no streak available
-                    await MainActor.run {
-                        self.currentUser = User(
-                            userId: userId,
-                            accessToken: token,
-                            streak: 0,
-                            firstName: nil
-                        )
+                    // If we get unauthorized error, sign out
+                    if let apiError = error as? APIError, case .unauthorized = apiError {
+                        await MainActor.run {
+                            self.signOut()
+                        }
+                    } else {
+                        // Still authenticated, just no streak available
+                        await MainActor.run {
+                            self.currentUser = User(
+                                userId: userId,
+                                accessToken: token,
+                                streak: 0,
+                                firstName: nil
+                            )
+                        }
                     }
                 }
             }
