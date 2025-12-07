@@ -15,6 +15,7 @@ provider:
     NUGGET_SESSIONS_TABLE: ${self:service}-sessions-${self:provider.stage}
     NUGGET_SCHEDULES_TABLE: ${self:service}-schedules-${self:provider.stage}
     NUGGET_DEVICE_TOKENS_TABLE: ${self:service}-device-tokens-${self:provider.stage}
+    NUGGET_FEEDS_TABLE: ${self:service}-feeds-${self:provider.stage}
     JWT_SECRET: ${env:JWT_SECRET, 'dev-secret-change-in-production'}
     STAGE: ${self:provider.stage}
     COGNITO_USER_POOL_ID: eu-west-1_1zILS9mOj
@@ -44,6 +45,7 @@ provider:
             - !GetAtt SessionsTable.Arn
             - !GetAtt SchedulesTable.Arn
             - !GetAtt DeviceTokensTable.Arn
+            - !GetAtt FeedsTable.Arn
             - !Sub '${NuggetsTable.Arn}/index/*'
         - Effect: Allow
           Action:
@@ -225,6 +227,35 @@ functions:
     timeout: 300
     # Invoked by EventBridge Scheduler - no HTTP events
 
+  registerDevice:
+    handler: dist/handlers/registerDevice.handler
+    events:
+      - httpApi:
+          path: /v1/device/register
+          method: post
+
+  getFeeds:
+    handler: dist/handlers/getFeeds.handler
+    events:
+      - httpApi:
+          path: /v1/feeds
+          method: get
+
+  subscribeFeed:
+    handler: dist/handlers/subscribeFeed.handler
+    events:
+      - httpApi:
+          path: /v1/feeds/subscribe
+          method: post
+
+  fetchFeedContent:
+    handler: dist/handlers/fetchFeedContent.handler
+    timeout: 60
+    events:
+      - httpApi:
+          path: /v1/feeds/fetch
+          method: post
+
 resources:
   Resources:
     UsersTable:
@@ -306,6 +337,38 @@ resources:
           - AttributeName: userId
             KeyType: HASH
           - AttributeName: scheduleId
+            KeyType: RANGE
+
+    DeviceTokensTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_DEVICE_TOKENS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: deviceToken
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: deviceToken
+            KeyType: RANGE
+
+    FeedsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_FEEDS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: feedId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: feedId
             KeyType: RANGE
 
     # IAM role for EventBridge Scheduler to invoke Lambda
