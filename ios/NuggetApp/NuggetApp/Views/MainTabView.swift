@@ -18,6 +18,9 @@ struct MainTabView: View {
 
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+
+        // Set tab bar tint color directly to avoid cascading to child views
+        UITabBar.appearance().tintColor = UIColor.label
     }
 
     var body: some View {
@@ -42,7 +45,6 @@ struct MainTabView: View {
                     Label("Profile", systemImage: "person.circle.fill")
                 }
         }
-        .tint(.primary)
     }
 }
 
