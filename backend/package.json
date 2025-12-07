@@ -28,6 +28,7 @@
     "aws-jwt-verify": "^5.1.1",
     "google-auth-library": "^10.5.0",
     "jsonwebtoken": "^9.0.2",
+    "rss-parser": "^3.13.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

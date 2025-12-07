@@ -18,6 +18,7 @@ export const TableNames = {
   sessions: process.env.NUGGET_SESSIONS_TABLE!,
   schedules: process.env.NUGGET_SCHEDULES_TABLE!,
   deviceTokens: process.env.NUGGET_DEVICE_TOKENS_TABLE!,
+  feeds: process.env.NUGGET_FEEDS_TABLE!,
 };
 
 export async function getItem<T>(tableName: string, key: Record<string, unknown>): Promise<T | null> {
@@ -68,4 +69,20 @@ export async function deleteItem(tableName: string, key: Record<string, unknown>
     TableName: tableName,
     Key: key,
   }));
+}
+
+/**
+ * Helper function to query items with a simple condition expression
+ */
+export async function query<T>(
+  tableName: string,
+  keyConditionExpression: string,
+  expressionAttributeValues: Record<string, unknown>
+): Promise<T[]> {
+  const result = await dynamoDb.send(new QueryCommand({
+    TableName: tableName,
+    KeyConditionExpression: keyConditionExpression,
+    ExpressionAttributeValues: expressionAttributeValues,
+  }));
+  return (result.Items as T[]) || [];
 }

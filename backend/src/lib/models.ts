@@ -167,3 +167,75 @@ export const DEFAULT_CATEGORIES = [
   'politics',
   'education'
 ] as const;
+
+// RSS Feed Models
+export interface UserFeedSubscription {
+  userId: string;
+  feedId: string; // Unique identifier for the feed subscription
+  rssFeedId: string; // ID from RSS_CATALOG
+  feedName: string;
+  feedUrl: string;
+  category: string;
+  subscribedAt: number;
+  isActive: boolean;
+  lastFetchedAt?: number;
+}
+
+export interface FeedItem {
+  title: string;
+  link: string;
+  pubDate?: string;
+  content?: string;
+  contentSnippet?: string;
+  creator?: string;
+  categories?: string[];
+  isoDate?: string;
+  guid?: string;
+}
+
+export interface ParsedFeed {
+  feedId: string;
+  feedName: string;
+  items: FeedItem[];
+  fetchedAt: number;
+}
+
+export interface RecapNugget {
+  feedId: string;
+  feedName: string;
+  articles: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+  }>;
+  summary: string;
+  keyPoints: string[];
+  createdAt: number;
+}
+
+export interface SubscribeFeedInput {
+  rssFeedId: string; // ID from RSS_CATALOG
+  subscribe: boolean; // true to subscribe, false to unsubscribe
+}
+
+export interface FeedSubscriptionResponse {
+  feedId: string;
+  rssFeedId: string;
+  feedName: string;
+  category: string;
+  isActive: boolean;
+  subscribedAt: string;
+}
+
+export interface GetFeedsResponse {
+  catalog: Array<{
+    id: string;
+    name: string;
+    url: string;
+    category: string;
+    description: string;
+    isPremium: boolean;
+    isSubscribed: boolean;
+  }>;
+  subscriptions: FeedSubscriptionResponse[];
+}
