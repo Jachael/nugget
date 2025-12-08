@@ -264,6 +264,14 @@ struct InboxView: View {
                 // Load content asynchronously
                 await loadNuggetsIfNeeded()
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RefreshFeed"))) { _ in
+                // Refresh feed when notified (e.g., after processing shared content)
+                Task {
+                    // Reset the cache timer to force a fresh load
+                    lastRefreshTime = Date.distantPast
+                    await loadNuggetsAsync()
+                }
+            }
             .onDisappear {
                 // Clean up timer when leaving the view
                 processingCheckTimer?.invalidate()

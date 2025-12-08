@@ -63,6 +63,7 @@ struct NuggetApp: App {
     @State private var showTutorial = false
     @AppStorage("colorScheme") private var colorScheme: String = "system"
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -87,6 +88,23 @@ struct NuggetApp: App {
                 if newValue {
                     Task {
                         await loadPreferencesAndDataAsync()
+                    }
+                }
+            }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                // Process pending shared nuggets when app becomes active
+                if newPhase == .active && authService.isAuthenticated {
+                    Task {
+                        do {
+                            let processed = try await NuggetService.shared.processPendingSharedNuggets()
+                            if processed {
+                                // Notify views to refresh
+                                NotificationCenter.default.post(name: NSNotification.Name("RefreshNuggets"), object: nil)
+                                NotificationCenter.default.post(name: NSNotification.Name("RefreshFeed"), object: nil)
+                            }
+                        } catch {
+                            print("Error processing pending nuggets on active: \(error)")
+                        }
                     }
                 }
             }
