@@ -1,6 +1,4 @@
-import { User } from './models';
-
-export type SubscriptionTier = 'free' | 'plus' | 'pro';
+import { User, SubscriptionTier } from './models';
 
 export interface SubscriptionLimits {
   dailyNuggetLimit: number;
@@ -16,13 +14,13 @@ export const SUBSCRIPTION_LIMITS: Record<SubscriptionTier, SubscriptionLimits> =
     hasRSSSupport: false,
     hasPriorityProcessing: false,
   },
-  plus: {
+  pro: {
     dailyNuggetLimit: 10,
     hasAutoProcess: true,
-    hasRSSSupport: false,
+    hasRSSSupport: true,
     hasPriorityProcessing: false,
   },
-  pro: {
+  ultimate: {
     dailyNuggetLimit: Number.MAX_SAFE_INTEGER,
     hasAutoProcess: true,
     hasRSSSupport: true,
@@ -31,15 +29,15 @@ export const SUBSCRIPTION_LIMITS: Record<SubscriptionTier, SubscriptionLimits> =
 };
 
 export const PRODUCT_ID_TO_TIER: Record<string, SubscriptionTier> = {
-  'com.nugget.plus': 'plus',
   'com.nugget.pro': 'pro',
+  'com.nugget.ultimate': 'ultimate',
 };
 
 /**
  * Get the subscription tier from product ID
  */
 export function getTierFromProductId(productId: string): SubscriptionTier {
-  return PRODUCT_ID_TO_TIER[productId] || 'free';
+  return PRODUCT_ID_TO_TIER[productId] as SubscriptionTier || 'free';
 }
 
 /**

@@ -49,7 +49,7 @@ struct AutoProcessingSettingsView: View {
                         VStack(spacing: 12) {
                             Image(systemName: "sparkles.rectangle.stack")
                                 .font(.system(size: 50))
-                                .foregroundColor(.blue)
+                                .foregroundColor(.primary)
 
                             Text("Auto-Processing")
                                 .font(.title2)
@@ -73,7 +73,7 @@ struct AutoProcessingSettingsView: View {
                                             .font(.headline)
                                         Text("Premium feature")
                                             .font(.caption)
-                                            .foregroundColor(.blue)
+                                            .foregroundColor(.secondary)
                                     }
                                 }
                                 .disabled(isSaving || !isPremiumUser())
@@ -87,7 +87,7 @@ struct AutoProcessingSettingsView: View {
                                 if !isPremiumUser() {
                                     HStack {
                                         Image(systemName: "crown.fill")
-                                            .foregroundColor(.yellow)
+                                            .foregroundColor(.secondary)
                                         Text("Requires Premium subscription")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
@@ -146,7 +146,7 @@ struct AutoProcessingSettingsView: View {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             Image(systemName: "clock")
-                                                .foregroundColor(.blue)
+                                                .foregroundColor(.primary)
                                             Text("Next Scheduled Run")
                                                 .font(.subheadline)
                                                 .fontWeight(.medium)
@@ -169,19 +169,16 @@ struct AutoProcessingSettingsView: View {
                             HStack {
                                 if isSaving {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
                                     Text("Save Schedule")
                                         .fontWeight(.semibold)
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(isPremiumUser() ? Color.blue : Color.gray)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
                         }
+                        .buttonStyle(GlassProminentButtonStyle())
                         .disabled(isSaving || !isPremiumUser())
+                        .opacity(isPremiumUser() ? 1.0 : 0.5)
                         .padding(.horizontal)
                         .padding(.top, 8)
 
@@ -222,7 +219,7 @@ struct AutoProcessingSettingsView: View {
 
     private func isPremiumUser() -> Bool {
         let tier = authService.currentUser?.subscriptionTier ?? "free"
-        return tier == "plus" || tier == "pro"
+        return tier == "pro" || tier == "ultimate"
     }
 
     private func loadCurrentSchedule() {
@@ -304,7 +301,7 @@ struct UpgradePromptView: View {
             VStack(spacing: 24) {
                 Image(systemName: "crown.fill")
                     .font(.system(size: 60))
-                    .foregroundColor(.yellow)
+                    .foregroundColor(.secondary)
 
                 Text("Premium Feature")
                     .font(.title)
@@ -330,11 +327,8 @@ struct UpgradePromptView: View {
                     Text("Upgrade to Premium")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
                 }
+                .buttonStyle(GlassProminentButtonStyle())
                 .padding(.horizontal)
 
                 Button(action: {
@@ -361,7 +355,7 @@ struct FeatureRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(.blue)
+                .foregroundColor(.primary)
                 .frame(width: 24)
             Text(text)
                 .font(.subheadline)

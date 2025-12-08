@@ -24,10 +24,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     }
 
     // Return preferences with defaults if not set
+    // Check both top-level subscriptionTier (set by StoreKit verification) and preferences.subscriptionTier
+    const subscriptionTier = user.subscriptionTier || user.preferences?.subscriptionTier || 'free';
+
     const response: PreferencesResponse = {
       interests: user.preferences?.interests || [],
       dailyNuggetLimit: user.preferences?.dailyNuggetLimit || 1,
-      subscriptionTier: user.preferences?.subscriptionTier || 'free',
+      subscriptionTier,
       customCategories: user.preferences?.customCategories,
       categoryWeights: user.preferences?.categoryWeights,
       onboardingCompleted: user.onboardingCompleted || false,

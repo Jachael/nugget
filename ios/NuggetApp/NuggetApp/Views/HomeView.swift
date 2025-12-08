@@ -18,6 +18,7 @@ enum TileFilter {
 
 struct HomeView: View {
     @EnvironmentObject var authService: AuthService
+    @StateObject private var badgeManager = NuggetBadgeManager.shared
     @State private var nuggets: [Nugget] = []
     @State private var isLoading = false
     @State private var session: Session?
@@ -29,6 +30,17 @@ struct HomeView: View {
     @State private var showSmartProcess = false
     @State private var lastLoadTime = Date.distantPast
     @State private var refreshTask: Task<Void, Never>?
+    @State private var showSubscription = false
+    @AppStorage("upgradeTileDismissed") private var upgradeTileDismissed = false
+
+    private var isPremium: Bool {
+        let tier = authService.currentUser?.subscriptionTier ?? "free"
+        return tier == "pro" || tier == "ultimate"
+    }
+
+    private var shouldShowUpgradeTile: Bool {
+        !isPremium && !upgradeTileDismissed
+    }
 
     var username: String {
         if let firstName = authService.currentUser?.firstName, !firstName.isEmpty {
@@ -133,15 +145,15 @@ struct HomeView: View {
                 // Scrollable content (behind the header)
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Spacer for fixed header area (increased for more spacing below search bar)
-                        Color.clear.frame(height: 160)
+                        // Spacer for fixed header area
+                        Color.clear.frame(height: shouldShowUpgradeTile ? 240 : 120)
 
                     // Error message with auto-dismiss
                     if let error = errorMessage {
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(.orange.opacity(0.8))
+                                .foregroundColor(.secondary)
                             Text(error)
                                 .font(.system(size: 13))
                                 .foregroundColor(.primary.opacity(0.8))
@@ -158,7 +170,7 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .glassEffect(.regular.tint(.orange), in: .capsule)
+                        .glassEffect(.regular, in: .capsule)
                         .padding(.horizontal)
                         .transition(.asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
@@ -251,6 +263,7 @@ struct HomeView: View {
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
+                            .background(Color.clear)
                             .frame(height: CGFloat(recentNuggets.count) * 110)
                             .scrollDisabled(true)
                         }
@@ -275,23 +288,30 @@ struct HomeView: View {
 
                             Spacer()
 
-                            // Streak button inline with title (circle)
+                            // Streak button inline with title (no circle)
                             Button {
                                 showStats = true
                                 HapticFeedback.selection()
                             } label: {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "sparkles.rectangle.stack.fill")
+                                    Image(systemName: "hands.and.sparkles.fill")
                                         .font(.system(size: 14))
-                                        .foregroundColor(.orange)
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.primary, .yellow)
+                                        .symbolEffect(.bounce, value: showStats)
                                     Text("\(authService.currentUser?.streak ?? 0)")
                                         .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                        .foregroundColor(.primary)
                                 }
-                                .frame(width: 56, height: 56)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                                .foregroundColor(.primary)
                             }
                             .buttonStyle(.plain)
+                            .onAppear {
+                                // Trigger bounce animation on first load
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showStats.toggle()
+                                    showStats.toggle()
+                                }
+                            }
                         }
 
                         Text("\(timeBasedGreeting), \(username)")
@@ -323,14 +343,24 @@ struct HomeView: View {
                                 .foregroundColor(.secondary.opacity(0.6))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
-                        .contentShape(Rectangle())
-                        .glassEffect(in: .capsule)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .contentShape(Capsule())
+                        .glassEffect(.regular, in: .capsule)
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, shouldShowUpgradeTile ? 12 : 16)
+
+                    // Upgrade tile (below search bar)
+                    if shouldShowUpgradeTile {
+                        PremiumTipCard {
+                            showSubscription = true
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 16)
+                        .background(Color(UIColor.systemBackground))
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -363,6 +393,9 @@ struct HomeView: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             }
             .liquidModalTransition(isPresented: showSmartProcess)
+            .sheet(isPresented: $showSubscription) {
+                SubscriptionView()
+            }
             .task {
                 // Use task instead of onAppear for async loading
                 await loadNuggetsAsync()
@@ -406,6 +439,8 @@ struct HomeView: View {
                         isLoading = false
                         lastLoadTime = Date()
                     }
+                    // Update badge count for new processed nuggets
+                    badgeManager.updateBadgeCount(with: loadedNuggets)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -599,56 +634,45 @@ struct ContentTileView: View {
 struct RecentNuggetRow: View {
     let nugget: Nugget
     let onTap: () -> Void
-    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
-        ParallaxGlassCard {
-            Button(action: onTap) {
-                HStack(spacing: 12) {
-                    // Gold category dot before content
-                    GoldCategoryDot()
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Unread indicator dot - only show for unread nuggets
+                if nugget.timesReviewed == 0 {
+                    Circle()
+                        .fill(Color.primary)
+                        .frame(width: 6, height: 6)
                         .padding(.leading, 4)
+                }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let title = nugget.title {
-                            Text(title)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(.primary)
-                                .lineLimit(2)
-                        }
-
-                        if let summary = nugget.summary {
-                            Text(summary)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(2)
-                        }
+                VStack(alignment: .leading, spacing: 6) {
+                    if let title = nugget.title {
+                        Text(title)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
                     }
 
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if let summary = nugget.summary {
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
                 }
-                .padding()
-                .glassEffect(in: .rect(cornerRadius: 12))
-                .overlay(
-                    FaintGradientHeader()
-                        .mask(RoundedRectangle(cornerRadius: 12))
-                        .allowsHitTesting(false),
-                    alignment: .top
-                )
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
+            .padding()
+            .glassEffect(in: .rect(cornerRadius: 12))
         }
-        .glassShadowDrift(scrollOffset: scrollOffset)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y
-        } action: { oldValue, newValue in
-            scrollOffset = newValue - (oldValue ?? 0)
-        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -657,6 +681,72 @@ struct ScaleButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Premium Tip Card
+struct PremiumTipCard: View {
+    let onUpgrade: () -> Void
+    @AppStorage("upgradeTileDismissed") private var isDismissed = false
+
+    private let tips = [
+        ("Auto-process your content", "Let AI summarize while you sleep"),
+        ("RSS feed support", "Subscribe to your favorite sources"),
+        ("Unlimited nuggets", "No daily limits on learning")
+    ]
+
+    private var randomTip: (String, String) {
+        tips.randomElement() ?? tips[0]
+    }
+
+    var body: some View {
+        if !isDismissed {
+            let tip = randomTip
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tip.0)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.primary)
+                    Text(tip.1)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    onUpgrade()
+                } label: {
+                    Text("Upgrade")
+                        .font(.caption.bold())
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.secondary.opacity(0.15))
+                        .cornerRadius(12)
+                }
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        isDismissed = true
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding()
+            .glassEffect(in: .rect(cornerRadius: 16))
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity.combined(with: .scale(scale: 0.95))
+            ))
+        }
     }
 }
 

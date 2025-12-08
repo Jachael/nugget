@@ -173,10 +173,19 @@ export function groupNuggetsByCategory(nuggets: Nugget[]): NuggetGroup[] {
 }
 
 /**
+ * Check if a tier is a paid tier (pro or ultimate)
+ */
+export function isPaidTier(tier: string | undefined): boolean {
+  return tier === 'pro' || tier === 'ultimate';
+}
+
+/**
  * Determine optimal batch sizes based on subscription tier
  */
-export function getBatchLimitForTier(tier: 'free' | 'premium'): number {
-  return tier === 'premium' ? 10 : 3;
+export function getBatchLimitForTier(tier: string | undefined): number {
+  if (tier === 'ultimate') return 15;
+  if (tier === 'pro') return 10;
+  return 3;
 }
 
 /**
@@ -185,7 +194,7 @@ export function getBatchLimitForTier(tier: 'free' | 'premium'): number {
  */
 export function createProcessingBatches(
   nuggets: Nugget[],
-  subscriptionTier: 'free' | 'premium'
+  subscriptionTier: string | undefined
 ): Nugget[][] {
   const batchLimit = getBatchLimitForTier(subscriptionTier);
   const groups = groupNuggetsByCategory(nuggets);

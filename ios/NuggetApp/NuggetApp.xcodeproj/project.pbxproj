@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		96CAE5A12EE6046100496FE5 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CAE5A02EE6046100496FE5 /* StoreKit.framework */; };
 		96FC096C2ECC5CF200C9531A /* NuggetShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 96FC09622ECC5CF200C9531A /* NuggetShare.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -52,10 +53,32 @@
 		968AEEFF2ECB4B57001F2016 /* NuggetApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NuggetApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		968AEF0D2ECB4B58001F2016 /* NuggetAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NuggetAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		968AEF172ECB4B58001F2016 /* NuggetAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NuggetAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		96CAE5A02EE6046100496FE5 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		96FC09622ECC5CF200C9531A /* NuggetShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NuggetShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		96CAE5A72EE6055A00496FE5 /* Exceptions for "NuggetApp" folder in "NuggetAppTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Products.storekit,
+			);
+			target = 968AEF0C2ECB4B58001F2016 /* NuggetAppTests */;
+		};
+		96CAE5A82EE6055A00496FE5 /* Exceptions for "NuggetApp" folder in "NuggetAppUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Products.storekit,
+			);
+			target = 968AEF162ECB4B58001F2016 /* NuggetAppUITests */;
+		};
+		96CAE5A92EE6055A00496FE5 /* Exceptions for "NuggetApp" folder in "NuggetShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Products.storekit,
+			);
+			target = 96FC09612ECC5CF200C9531A /* NuggetShare */;
+		};
 		96FC096D2ECC5CF200C9531A /* Exceptions for "NuggetShare" folder in "NuggetShare" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -68,6 +91,11 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		968AEF012ECB4B57001F2016 /* NuggetApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				96CAE5A72EE6055A00496FE5 /* Exceptions for "NuggetApp" folder in "NuggetAppTests" target */,
+				96CAE5A82EE6055A00496FE5 /* Exceptions for "NuggetApp" folder in "NuggetAppUITests" target */,
+				96CAE5A92EE6055A00496FE5 /* Exceptions for "NuggetApp" folder in "NuggetShare" target */,
+			);
 			path = NuggetApp;
 			sourceTree = "<group>";
 		};
@@ -96,6 +124,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96CAE5A12EE6046100496FE5 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -130,6 +159,7 @@
 				968AEF102ECB4B58001F2016 /* NuggetAppTests */,
 				968AEF1A2ECB4B58001F2016 /* NuggetAppUITests */,
 				96FC09632ECC5CF200C9531A /* NuggetShare */,
+				96CAE59F2EE6046100496FE5 /* Frameworks */,
 				968AEF002ECB4B57001F2016 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -143,6 +173,14 @@
 				96FC09622ECC5CF200C9531A /* NuggetShare.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		96CAE59F2EE6046100496FE5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				96CAE5A02EE6046100496FE5 /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

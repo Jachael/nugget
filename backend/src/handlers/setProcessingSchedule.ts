@@ -91,12 +91,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
-    // Check if user has premium subscription
-    if (user.preferences?.subscriptionTier !== 'premium') {
+    // Check if user has a paid subscription (pro or ultimate)
+    const tier = user.subscriptionTier || user.preferences?.subscriptionTier;
+    if (tier !== 'pro' && tier !== 'ultimate') {
       return {
         statusCode: 403,
         body: JSON.stringify({
-          error: 'Auto-processing requires Premium subscription',
+          error: 'Auto-processing requires a Pro or Ultimate subscription',
           upgradeRequired: true,
         }),
       };

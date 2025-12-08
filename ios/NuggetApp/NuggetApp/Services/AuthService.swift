@@ -98,8 +98,11 @@ final class AuthService: ObservableObject {
                             userId: userId,
                             accessToken: token,
                             streak: userProfile.streak,
-                            firstName: userProfile.firstName
+                            firstName: userProfile.firstName,
+                            subscriptionTier: userProfile.subscriptionTier,
+                            subscriptionExpiresAt: userProfile.subscriptionExpiresAt
                         )
+                        print("✅ User loaded with subscriptionTier: \(userProfile.subscriptionTier ?? "nil")")
                     }
                 } catch {
                     print("Failed to fetch user profile: \(error)")
@@ -195,9 +198,12 @@ final class AuthService: ObservableObject {
                 userId: authResponse.userId,
                 accessToken: authResponse.accessToken,
                 streak: authResponse.streak,
-                firstName: authResponse.firstName
+                firstName: authResponse.firstName,
+                subscriptionTier: authResponse.subscriptionTier,
+                subscriptionExpiresAt: authResponse.subscriptionExpiresAt
             )
             self.isAuthenticated = true
+            print("✅ Signed in with subscriptionTier: \(authResponse.subscriptionTier ?? "nil")")
         }
     }
 
@@ -230,7 +236,9 @@ final class AuthService: ObservableObject {
                 userId: authResponse.userId,
                 accessToken: authResponse.accessToken,
                 streak: authResponse.streak,
-                firstName: authResponse.firstName
+                firstName: authResponse.firstName,
+                subscriptionTier: authResponse.subscriptionTier,
+                subscriptionExpiresAt: authResponse.subscriptionExpiresAt
             )
             self.isAuthenticated = true
         }

@@ -127,9 +127,10 @@ struct StatsView: View {
         VStack(spacing: 16) {
             // Full-width streak card
             HStack(spacing: 16) {
-                Image(systemName: "square.stack.3d.up.fill")
+                Image(systemName: "brain.head.profile.fill")
                     .font(.system(size: 36))
-                    .foregroundColor(.orange)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.secondary, .yellow)
                     .frame(width: 50)
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -154,6 +155,16 @@ struct StatsView: View {
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundColor(.secondary)
+
+                        if let tier = authService.currentUser?.subscriptionTier {
+                            Text("·")
+                                .foregroundColor(.secondary)
+
+                            Text(tier.capitalized)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(tier == "free" ? .secondary : .yellow)
+                        }
                     }
                 }
 
@@ -216,13 +227,7 @@ struct StatsView: View {
                         x: .value("Day", item.0, unit: .day),
                         y: .value("Nuggets", item.1)
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.8)],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
+                    .foregroundStyle(Color.secondary)
                     .cornerRadius(4)
                 }
                 .frame(height: 150)
@@ -268,16 +273,10 @@ struct StatsView: View {
                         // Progress bar
                         GeometryReader { geometry in
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.blue.opacity(0.2))
+                                .fill(Color.secondary.opacity(0.2))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [Color.blue, Color.purple],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
-                                        )
+                                        .fill(Color.secondary)
                                         .frame(width: geometry.size.width * CGFloat(count) / CGFloat(totalNuggets))
                                     ,
                                     alignment: .leading
@@ -306,7 +305,7 @@ struct StatsView: View {
                 if totalNuggets > 0 {
                     HStack {
                         Image(systemName: "calendar")
-                            .foregroundColor(.blue)
+                            .foregroundColor(.secondary)
                         Text("You've been learning for \(daysSinceFirstNugget()) days")
                             .font(.subheadline)
                     }
@@ -315,7 +314,7 @@ struct StatsView: View {
                 if processedNuggets > 0 {
                     HStack {
                         Image(systemName: "percent")
-                            .foregroundColor(.green)
+                            .foregroundColor(.secondary)
                         Text("\(Int(Double(processedNuggets) / Double(totalNuggets) * 100))% of your content is processed")
                             .font(.subheadline)
                     }
@@ -324,7 +323,7 @@ struct StatsView: View {
                 if let favoriteDay = getFavoriteDay() {
                     HStack {
                         Image(systemName: "heart.fill")
-                            .foregroundColor(.pink)
+                            .foregroundColor(.secondary)
                         Text("You're most active on \(favoriteDay)")
                             .font(.subheadline)
                     }

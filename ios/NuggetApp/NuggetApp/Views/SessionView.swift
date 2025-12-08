@@ -99,13 +99,7 @@ struct SessionView: View {
                 VStack(spacing: 24) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 80))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color.goldAccent, Color.goldAccent.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .foregroundStyle(.primary)
 
                     Text("Session Complete \(SparkSymbol.spark)")
                         .font(.title.bold())
@@ -130,18 +124,8 @@ struct SessionView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(
-                    LinearGradient(
-                        colors: [Color.goldAccent, Color.goldAccent.opacity(0.8)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 14)
-                )
-                .foregroundColor(.white)
-                .shadow(color: Color.goldAccent.opacity(0.3), radius: 10, x: 0, y: 5)
             }
-            .buttonStyle(LiquidGlassButtonStyle())
+            .buttonStyle(GlassProminentButtonStyle())
             .padding(.horizontal, 40)
             .padding(.bottom, 60)
         }
@@ -429,11 +413,11 @@ struct CardStackView: View {
                     VStack {
                         Image(systemName: "arrow.left.circle.fill")
                             .font(.system(size: 60))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.primary)
                         Text("NEXT")
                             .font(.caption)
                             .fontWeight(.bold)
-                            .foregroundColor(.green)
+                            .foregroundColor(.primary)
                     }
                     .padding(40)
                     .opacity(Double(-offset.width / 120))
@@ -447,11 +431,11 @@ struct CardStackView: View {
                     VStack {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
                             .font(.system(size: 60))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(.secondary)
                         Text("BACK")
                             .font(.caption)
                             .fontWeight(.bold)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.secondary)
                     }
                     .padding(40)
                     .opacity(Double(offset.width / 120))
@@ -764,11 +748,7 @@ struct IndividualArticleCard: View {
                                 ForEach(Array(summary.keyPoints.enumerated()), id: \.offset) { idx, point in
                                     HStack(alignment: .top, spacing: 12) {
                                         Circle()
-                                            .fill(LinearGradient(
-                                                colors: [Color.blue, Color.purple],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ))
+                                            .fill(Color.secondary)
                                             .frame(width: 8, height: 8)
                                             .padding(.top, 6)
 
@@ -784,14 +764,7 @@ struct IndividualArticleCard: View {
                             .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16)
-                                    .strokeBorder(
-                                        LinearGradient(
-                                            colors: [Color.blue.opacity(0.3), Color.purple.opacity(0.3)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 1
-                                    )
+                                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
                             )
                         }
                     }
@@ -805,13 +778,13 @@ struct IndividualArticleCard: View {
 
                         Text(urlHost)
                             .font(.caption)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.blue.opacity(0.2), lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5))
                     }
                     .padding(28)
                     .padding(.top, 8) // Extra top padding for close button area

@@ -12,117 +12,168 @@ struct SmartProcessView: View {
     let unprocessedCount: Int
     let onSessionCreated: (Session) -> Void
 
-    // Preset queries with gradient colors
+    // Time-based greeting similar to HomeView
+    var timeBasedPrompt: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour < 12 {
+            return "What do you want to read this morning?"
+        } else if hour < 17 {
+            return "What do you want to read this afternoon?"
+        } else {
+            return "What do you want to read this evening?"
+        }
+    }
+
+    // Preset queries with neutral styling
     let presetQueries = [
-        ("Tech This Week", "tech from this week", [Color.blue, Color.purple]),
-        ("Career Insights", "career advice", [Color.orange, Color.red]),
-        ("Quick Reads", "quick 5 minute reads", [Color.green, Color.teal]),
-        ("Finance Updates", "finance and markets", [Color.purple, Color.pink]),
-        ("Learn Something", "interesting facts", [Color.indigo, Color.blue]),
-        ("Today's Best", "best from today", [Color.yellow, Color.orange])
+        ("Tech This Week", "tech from this week", [Color.primary, Color.secondary]),
+        ("Career Insights", "career advice", [Color.primary, Color.secondary]),
+        ("Quick Reads", "quick 5 minute reads", [Color.primary, Color.secondary]),
+        ("Finance Updates", "finance and markets", [Color.primary, Color.secondary]),
+        ("Learn Something", "interesting facts", [Color.primary, Color.secondary]),
+        ("Today's Best", "best from today", [Color.primary, Color.secondary])
     ]
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    // Compact Header
+                    // Compact Header with time-based greeting
                     VStack(spacing: 4) {
-                        Text("What do you want to learn?")
+                        Text(timeBasedPrompt)
                             .font(.headline)
 
-                        Text("\(unprocessedCount) items ready")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if unprocessedCount > 0 {
+                            Text("\(unprocessedCount) items ready")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("Add content to your feed to get started")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
-                    .padding(.top, 8)
+                    .padding(.top, 24)
 
                     // Custom query input
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 16))
-                                .foregroundColor(.secondary)
+                    if unprocessedCount > 0 {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.secondary)
 
-                            TextField("Search your saved content...", text: $customQuery)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 16))
+                                TextField("Search your saved content...", text: $customQuery)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 16))
+
+                                if !customQuery.isEmpty {
+                                    Button {
+                                        customQuery = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(.secondary.opacity(0.6))
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .contentShape(Capsule())
+                            .glassEffect(.regular, in: .capsule)
+                            .padding(.horizontal)
 
                             if !customQuery.isEmpty {
                                 Button {
-                                    customQuery = ""
+                                    processQuery(customQuery)
                                 } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.secondary.opacity(0.6))
+                                    HStack {
+                                        Text("Search for \"\(customQuery)\"")
+                                            .font(.system(size: 15))
+                                        Spacer()
+                                        Image(systemName: "arrow.right")
+                                            .font(.system(size: 14))
+                                    }
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                                    .padding(.horizontal)
+                                }
+                                .disabled(isProcessing)
+                            }
+                        }
+
+                        // Suggestions header
+                        Text("Popular searches")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+
+                        // Preset queries grid - 3 columns for compact layout
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 10) {
+                            ForEach(presetQueries, id: \.0) { title, query, colors in
+                                PresetQueryCard(
+                                    title: title,
+                                    gradientColors: colors,
+                                    isSelected: selectedPreset == query,
+                                    isProcessing: isProcessing && selectedPreset == query,
+                                    isComplete: processingComplete && selectedPreset == query
+                                ) {
+                                    selectedPreset = query
+                                    processQuery(query)
                                 }
                             }
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .glassEffect(in: .capsule)
                         .padding(.horizontal)
+                    } else {
+                        // Show prompt to add content when no unprocessed items
+                        VStack(spacing: 16) {
+                            Image(systemName: "plus.app")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                                .symbolRenderingMode(.hierarchical)
 
-                        if !customQuery.isEmpty {
+                            Text("No content available")
+                                .font(.headline)
+
+                            Text("Add articles, videos, or links to your feed to start learning")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+
                             Button {
-                                processQuery(customQuery)
+                                dismiss()
                             } label: {
-                                HStack {
-                                    Text("Search for \"\(customQuery)\"")
-                                        .font(.system(size: 15))
-                                    Spacer()
-                                    Image(systemName: "arrow.right")
-                                        .font(.system(size: 14))
-                                }
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .glassEffect(in: .rect(cornerRadius: 12))
-                                .padding(.horizontal)
+                                Text("Got it")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular, in: .capsule)
                             }
-                            .disabled(isProcessing)
                         }
-                    }
-
-                    // Suggestions header
-                    Text("Popular searches")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
                         .padding(.horizontal)
-
-                    // Preset queries grid - 3 columns for compact layout
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 10) {
-                        ForEach(presetQueries, id: \.0) { title, query, colors in
-                            PresetQueryCard(
-                                title: title,
-                                gradientColors: colors,
-                                isSelected: selectedPreset == query,
-                                isProcessing: isProcessing && selectedPreset == query,
-                                isComplete: processingComplete && selectedPreset == query
-                            ) {
-                                selectedPreset = query
-                                processQuery(query)
-                            }
-                        }
                     }
-                    .padding(.horizontal)
 
                     // Error message
                     if let error = errorMessage {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
+                                .foregroundColor(.secondary)
                             Text(error)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                         .padding()
-                        .glassEffect(.regular.tint(.orange), in: .rect(cornerRadius: 12))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 12))
                         .padding(.horizontal)
                     }
                 }
@@ -191,7 +242,7 @@ struct PresetQueryCard: View {
                     VStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundColor(.green)
+                            .foregroundColor(.primary)
                         Text("Ready!")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.primary)
@@ -201,7 +252,7 @@ struct PresetQueryCard: View {
                     .glassEffect(in: .rect(cornerRadius: 12))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.green.opacity(0.5), lineWidth: 2)
+                            .strokeBorder(Color.primary.opacity(0.3), lineWidth: 2)
                     )
                 } else if isProcessing {
                     VStack(spacing: 8) {

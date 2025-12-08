@@ -3,8 +3,16 @@ import StoreKit
 
 enum SubscriptionTier: String, Codable {
     case free = "free"
-    case plus = "plus"
-    case pro = "pro"
+    case plus = "pro"        // "Pro" tier in UI
+    case pro = "ultimate"    // "Ultimate" tier in UI
+
+    var displayName: String {
+        switch self {
+        case .free: return "Free"
+        case .plus: return "Pro"
+        case .pro: return "Ultimate"
+        }
+    }
 
     var dailyNuggetLimit: Int {
         switch self {
@@ -40,8 +48,8 @@ final class SubscriptionService: ObservableObject {
     static let shared = SubscriptionService()
 
     // Product IDs
-    private let plusProductId = "com.nugget.plus"
-    private let proProductId = "com.nugget.pro"
+    private let proProductId = "com.nugget.pro"           // "Pro" tier
+    private let ultimateProductId = "com.nugget.ultimate" // "Ultimate" tier
 
     @Published private(set) var products: [Product] = []
     @Published private(set) var currentTier: SubscriptionTier = .free
@@ -78,14 +86,27 @@ final class SubscriptionService: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let productIds: Set<String> = [plusProductId, proProductId]
+            let productIds: Set<String> = [proProductId, ultimateProductId]
+            print("🔍 Requesting products: \(productIds)")
+
             let loadedProducts = try await Product.products(for: productIds)
 
             await MainActor.run {
                 self.products = loadedProducts.sorted { $0.price < $1.price }
             }
 
-            print("✅ Fetched \(loadedProducts.count) products")
+            print("✅ Fetched \(loadedProducts.count) products:")
+            for product in loadedProducts {
+                print("   - \(product.id): \(product.displayName) @ \(product.displayPrice)")
+            }
+
+            if loadedProducts.isEmpty {
+                print("⚠️ No products returned. Check:")
+                print("   1. Product IDs match exactly in App Store Connect")
+                print("   2. Paid Applications Agreement is signed")
+                print("   3. Products have prices and localizations set")
+                print("   4. Bundle ID matches your app")
+            }
         } catch {
             print("❌ Failed to fetch products: \(error)")
             await MainActor.run {
@@ -260,10 +281,10 @@ final class SubscriptionService: ObservableObject {
 
     private func tierFromProductId(_ productId: String) -> SubscriptionTier {
         switch productId {
-        case plusProductId:
-            return .plus
         case proProductId:
-            return .pro
+            return .plus      // "Pro" tier
+        case ultimateProductId:
+            return .pro       // "Ultimate" tier
         default:
             return .free
         }

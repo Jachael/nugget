@@ -21,7 +21,8 @@ struct OnboardingView: View {
                         VStack(spacing: 12) {
                             Image(systemName: "brain.head.profile")
                                 .font(.system(size: 60))
-                                .foregroundColor(.blue)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.primary, .yellow)
 
                             Text("Welcome to Nugget")
                                 .font(.largeTitle)
@@ -88,24 +89,17 @@ struct OnboardingView: View {
                                 if dailyNuggetLimit > 1 {
                                     HStack {
                                         Image(systemName: "crown.fill")
-                                            .foregroundColor(.yellow)
+                                            .foregroundColor(.primary)
                                         Text("Premium feature")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                     }
                                     .padding(.vertical, 8)
                                     .padding(.horizontal, 12)
-                                    .background(
-                                        LinearGradient(
-                                            colors: [Color.yellow.opacity(0.1), Color.yellow.opacity(0.05)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        in: RoundedRectangle(cornerRadius: 8)
-                                    )
+                                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
-                                            .strokeBorder(.ultraThinMaterial, lineWidth: 1)
+                                            .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
                                     )
                                 }
                             }
@@ -131,7 +125,6 @@ struct OnboardingView: View {
                             HStack(spacing: 10) {
                                 if isLoading {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
                                     Image(systemName: "arrow.right.circle.fill")
                                         .font(.title3)
@@ -140,26 +133,10 @@ struct OnboardingView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                LinearGradient(
-                                    colors: selectedInterests.isEmpty
-                                        ? [Color.gray, Color.gray.opacity(0.8)]
-                                        : [Color.blue, Color.blue.opacity(0.8)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 14)
-                            )
-                            .foregroundColor(.white)
-                            .shadow(
-                                color: selectedInterests.isEmpty ? Color.clear : Color.blue.opacity(0.3),
-                                radius: 10,
-                                x: 0,
-                                y: 5
-                            )
                         }
+                        .buttonStyle(GlassProminentButtonStyle())
                         .disabled(selectedInterests.isEmpty || isLoading)
+                        .opacity(selectedInterests.isEmpty ? 0.5 : 1.0)
                         .padding(.horizontal)
                         .padding(.bottom, 32)
                     }
@@ -204,6 +181,7 @@ struct CategoryButton: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
         Button(action: action) {
@@ -215,14 +193,10 @@ struct CategoryButton: View {
                 .padding(.horizontal, 16)
                 .background(
                     isSelected
-                        ? AnyShapeStyle(LinearGradient(
-                            colors: [Color.blue, Color.blue.opacity(0.8)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                          ))
-                        : AnyShapeStyle(.ultraThinMaterial)
+                        ? (colorScheme == .dark ? Color.white : Color.black)
+                        : Color.clear
                 )
-                .foregroundColor(isSelected ? .white : .primary)
+                .foregroundColor(isSelected ? (colorScheme == .dark ? .black : .white) : .primary)
                 .cornerRadius(10)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -231,12 +205,7 @@ struct CategoryButton: View {
                             lineWidth: 0.5
                         )
                 )
-                .shadow(
-                    color: isSelected ? Color.blue.opacity(0.3) : Color.clear,
-                    radius: 6,
-                    x: 0,
-                    y: 3
-                )
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
         }
     }
 }

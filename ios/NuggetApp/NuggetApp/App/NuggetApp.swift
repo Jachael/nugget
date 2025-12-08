@@ -6,6 +6,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         // Set notification delegate
         UNUserNotificationCenter.current().delegate = self
+
+        // Reset upgrade tile dismissed state on app launch
+        // This allows the tile to reappear on next app open if user dismissed it
+        UserDefaults.standard.set(false, forKey: "upgradeTileDismissed")
+
         return true
     }
 

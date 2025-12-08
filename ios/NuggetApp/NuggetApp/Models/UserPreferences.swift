@@ -10,7 +10,21 @@ struct UserPreferences: Codable, Equatable {
 
     enum SubscriptionTier: String, Codable {
         case free
-        case premium
+        case pro
+        case ultimate
+        case premium // Legacy, maps to pro
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let rawValue = try container.decode(String.self)
+            switch rawValue {
+            case "free": self = .free
+            case "pro": self = .pro
+            case "ultimate": self = .ultimate
+            case "premium": self = .pro // Legacy mapping
+            default: self = .free
+            }
+        }
     }
 
     static let defaultCategories = [

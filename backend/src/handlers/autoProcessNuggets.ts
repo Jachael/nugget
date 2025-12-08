@@ -1,4 +1,3 @@
-import { EventBridgeEvent } from 'aws-lambda';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,9 +16,11 @@ interface AutoProcessEvent {
  * Auto-process nuggets for a user based on their schedule
  * Invoked by EventBridge Scheduler
  */
-export async function handler(event: EventBridgeEvent<string, AutoProcessEvent>): Promise<void> {
+export async function handler(event: AutoProcessEvent): Promise<void> {
   try {
-    const userId = event.detail?.userId;
+    console.log('Received event:', JSON.stringify(event, null, 2));
+
+    const userId = event.userId;
 
     if (!userId) {
       console.error('No userId provided in event');
@@ -35,9 +36,10 @@ export async function handler(event: EventBridgeEvent<string, AutoProcessEvent>)
       return;
     }
 
-    // Verify user has premium subscription and auto-process enabled
-    if (user.preferences?.subscriptionTier !== 'premium') {
-      console.error(`User ${userId} does not have premium subscription`);
+    // Verify user has paid subscription (pro or ultimate) and auto-process enabled
+    const tier = user.subscriptionTier || user.preferences?.subscriptionTier;
+    if (tier !== 'pro' && tier !== 'ultimate') {
+      console.error(`User ${userId} does not have a paid subscription (tier: ${tier})`);
       return;
     }
 
@@ -95,8 +97,8 @@ export async function handler(event: EventBridgeEvent<string, AutoProcessEvent>)
     }
 
     // Apply tier-based limits
-    const subscriptionTier = user.preferences?.subscriptionTier || 'free';
-    const batchLimit = subscriptionTier === 'premium' ? 10 : 3;
+    const subscriptionTier = user.subscriptionTier || user.preferences?.subscriptionTier || 'free';
+    const batchLimit = subscriptionTier === 'ultimate' ? 15 : (subscriptionTier === 'pro' ? 10 : 3);
     const limitedNuggets = nuggetsToProcess.slice(0, batchLimit);
 
     console.log(`Processing ${limitedNuggets.length} nuggets (limit: ${batchLimit})`);

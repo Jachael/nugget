@@ -10,7 +10,20 @@ struct SettingsView: View {
     @State private var showingDeleteConfirmation = false
     @State private var isDeletingAccount = false
     @State private var deleteError: String?
+    @State private var isProfileExpanded = false
     @AppStorage("colorScheme") private var colorScheme: String = "system"
+
+    private var subscriptionTier: String {
+        authService.currentUser?.subscriptionTier ?? "free"
+    }
+
+    private var isPremium: Bool {
+        subscriptionTier == "pro" || subscriptionTier == "ultimate"
+    }
+
+    private var isUltimate: Bool {
+        subscriptionTier == "ultimate"
+    }
 
     private func getUserLevel(streak: Int) -> String {
         switch streak {
@@ -27,7 +40,6 @@ struct SettingsView: View {
 
     private var username: String {
         if let user = authService.currentUser {
-            // Use firstName if available, otherwise fall back to "User"
             if let firstName = user.firstName, !firstName.isEmpty {
                 return firstName
             }
@@ -51,79 +63,283 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Profile Header with full-width streak card
-                    VStack(spacing: 20) {
-                        // Full-width user card - removed top person icon
-                        HStack(spacing: 16) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 36))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 50)
+                    // Profile Header with expandable stats
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isProfileExpanded.toggle()
+                            }
+                        } label: {
+                            VStack(spacing: 0) {
+                                HStack(spacing: 16) {
+                                    Image(systemName: "person.circle.fill")
+                                        .font(.system(size: 36))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 50)
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(username)
-                                    .font(.title3.bold())
-                                    .foregroundColor(.primary)
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(spacing: 8) {
+                                            Text(username)
+                                                .font(.title3.bold())
+                                                .foregroundColor(.primary)
 
-                                HStack(spacing: 12) {
-                                    HStack(spacing: 4) {
-                                        Text("\(authService.currentUser?.streak ?? 0)")
-                                            .font(.headline)
-                                            .foregroundColor(.primary)
-                                        Text("day streak")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
+                                            // Subscription badge
+                                            if isPremium {
+                                                Text(subscriptionTier.uppercased())
+                                                    .font(.caption2.bold())
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 3)
+                                                    .background(Color.secondary)
+                                                    .cornerRadius(6)
+                                            }
+                                        }
+
+                                        HStack(spacing: 12) {
+                                            HStack(spacing: 4) {
+                                                Text("\(authService.currentUser?.streak ?? 0)")
+                                                    .font(.headline)
+                                                    .foregroundColor(.primary)
+                                                Text("day streak")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.secondary)
+                                            }
+
+                                            Text("·")
+                                                .foregroundColor(.secondary)
+
+                                            Text(getUserLevel(streak: authService.currentUser?.streak ?? 0))
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(.secondary)
+                                        }
                                     }
 
-                                    Text("·")
-                                        .foregroundColor(.secondary)
+                                    Spacer()
 
-                                    Text(getUserLevel(streak: authService.currentUser?.streak ?? 0))
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
+                                    Image(systemName: isProfileExpanded ? "chevron.up" : "chevron.down")
+                                        .font(.caption)
                                         .foregroundColor(.secondary)
+                                        .rotationEffect(.degrees(isProfileExpanded ? 0 : 0))
+                                }
+                                .padding()
+
+                                // Expandable Stats Section
+                                if isProfileExpanded {
+                                    VStack(spacing: 0) {
+                                        Divider()
+                                            .padding(.horizontal)
+
+                                        LazyVGrid(columns: [
+                                            GridItem(.flexible(), spacing: 12),
+                                            GridItem(.flexible(), spacing: 12)
+                                        ], spacing: 12) {
+                                            CompactStatCard(
+                                                title: "Total Articles",
+                                                value: "\(totalNuggets)",
+                                                icon: "doc.text.fill"
+                                            )
+
+                                            CompactStatCard(
+                                                title: "Processed",
+                                                value: "\(processedNuggets)",
+                                                icon: "checkmark.circle.fill"
+                                            )
+
+                                            CompactStatCard(
+                                                title: "Categories",
+                                                value: "\(categoriesCount)",
+                                                icon: "tag.fill"
+                                            )
+
+                                            CompactStatCard(
+                                                title: "Streak",
+                                                value: "\(authService.currentUser?.streak ?? 0)",
+                                                icon: "square.stack.3d.up.fill"
+                                            )
+                                        }
+                                        .padding()
+                                    }
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
                                 }
                             }
-
-                            Spacer()
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .glassEffect(in: .rect(cornerRadius: 16))
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+
+                    // Subscription Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Subscription")
+                            .font(.title3.bold())
+                            .padding(.horizontal)
+
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                SubscriptionView()
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(isPremium ? "Manage Subscription" : "Upgrade to Premium")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text(isPremium ? "\(subscriptionTier.capitalized) Plan" : "Unlock all features")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if !isPremium {
+                                        Text("✦")
+                                            .font(.title3)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+                        }
                         .glassEffect(in: .rect(cornerRadius: 16))
                         .padding(.horizontal)
-                        .padding(.top, 20)
                     }
 
-                    // Stats Grid
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 16),
-                        GridItem(.flexible(), spacing: 16)
-                    ], spacing: 16) {
-                        StatCard(
-                            title: "Total Articles",
-                            value: "\(totalNuggets)",
-                            icon: "doc.text.fill"
-                        )
+                    // Premium Features Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text("Premium Features")
+                                .font(.title3.bold())
+                            if !isPremium {
+                                Text("✦")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.horizontal)
 
-                        StatCard(
-                            title: "Processed",
-                            value: "\(processedNuggets)",
-                            icon: "checkmark.circle.fill"
-                        )
+                        VStack(spacing: 0) {
+                            // Auto-Processing
+                            NavigationLink {
+                                AutoProcessingSettingsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "gearshape.2.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Auto-Processing")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Schedule automatic content processing")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if !isPremium {
+                                        LockedBadge()
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
 
-                        StatCard(
-                            title: "Categories",
-                            value: "\(categoriesCount)",
-                            icon: "tag.fill"
-                        )
+                            Divider().padding(.horizontal)
 
-                        StatCard(
-                            title: "Streak",
-                            value: "\(authService.currentUser?.streak ?? 0)",
-                            icon: "square.stack.3d.up.fill"
-                        )
+                            // RSS Feeds
+                            NavigationLink {
+                                RSSFeedsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "dot.radiowaves.up.forward")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("RSS Feeds")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Subscribe to quality news sources")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if !isPremium {
+                                        LockedBadge()
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+
+                            Divider().padding(.horizontal)
+
+                            // Notifications
+                            NavigationLink {
+                                NotificationSettingsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "bell.badge.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Notifications")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Get notified when content is ready")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+                        }
+                        .glassEffect(in: .rect(cornerRadius: 16))
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
+
+                    // Help & Support Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Help & Support")
+                            .font(.title3.bold())
+                            .padding(.horizontal)
+
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                TutorialView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "book.closed.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Onboarding & Instructions")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Learn how to use Nugget")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+                        }
+                        .glassEffect(in: .rect(cornerRadius: 16))
+                        .padding(.horizontal)
+                    }
 
                     // Appearance Section
                     VStack(alignment: .leading, spacing: 16) {
@@ -131,24 +347,51 @@ struct SettingsView: View {
                             .font(.title3.bold())
                             .padding(.horizontal)
 
-                        VStack(spacing: 0) {
-                            HStack {
-                                Label("Theme", systemImage: "moon.circle.fill")
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "moon.circle.fill")
+                                    .font(.title3)
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 28)
+
+                                Text("Theme")
+                                    .font(.body)
                                     .foregroundColor(.primary)
+
                                 Spacer()
-                                Picker("Theme", selection: $colorScheme) {
-                                    Label("System", systemImage: "gear")
-                                        .tag("system")
-                                    Label("Light", systemImage: "sun.max")
-                                        .tag("light")
-                                    Label("Dark", systemImage: "moon")
-                                        .tag("dark")
-                                }
-                                .pickerStyle(SegmentedPickerStyle())
-                                .frame(width: 180)
                             }
-                            .padding()
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+
+                            HStack(spacing: 12) {
+                                ThemeButton(
+                                    title: "System",
+                                    icon: "gear",
+                                    isSelected: colorScheme == "system"
+                                ) {
+                                    colorScheme = "system"
+                                }
+
+                                ThemeButton(
+                                    title: "Light",
+                                    icon: "sun.max",
+                                    isSelected: colorScheme == "light"
+                                ) {
+                                    colorScheme = "light"
+                                }
+
+                                ThemeButton(
+                                    title: "Dark",
+                                    icon: "moon",
+                                    isSelected: colorScheme == "dark"
+                                ) {
+                                    colorScheme = "dark"
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.bottom, 4)
                         }
+                        .padding(.vertical, 12)
                         .glassEffect(in: .rect(cornerRadius: 16))
                         .padding(.horizontal)
                     }
@@ -191,7 +434,7 @@ struct SettingsView: View {
                                     HStack(spacing: 6) {
                                         Text("\(prefs.dailyNuggetLimit)")
                                             .fontWeight(.medium)
-                                        if prefs.subscriptionTier == .premium {
+                                        if prefs.subscriptionTier == .pro || prefs.subscriptionTier == .ultimate {
                                             Image(systemName: "crown.fill")
                                                 .foregroundColor(.secondary)
                                                 .font(.caption)
@@ -208,7 +451,6 @@ struct SettingsView: View {
 
                     // Account Actions
                     VStack(spacing: 12) {
-                        // Sign Out Button
                         Button(role: .destructive) {
                             authService.signOut()
                         } label: {
@@ -222,7 +464,6 @@ struct SettingsView: View {
                         }
                         .buttonStyle(LiquidGlassButtonStyle())
 
-                        // Delete Account Button
                         Button(role: .destructive) {
                             showingDeleteConfirmation = true
                         } label: {
@@ -318,7 +559,6 @@ struct SettingsView: View {
             do {
                 try await authService.deleteAccount()
                 await MainActor.run {
-                    // Sign out after successful deletion
                     authService.signOut()
                 }
             } catch {
@@ -328,6 +568,81 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Locked Badge
+struct LockedBadge: View {
+    var body: some View {
+        Text("PRO")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.8))
+            .cornerRadius(4)
+    }
+}
+
+// MARK: - Notification Settings View
+struct NotificationSettingsView: View {
+    @State private var nuggetsReady = true
+    @State private var streakReminders = true
+    @State private var newContent = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Notification Preferences")
+                        .font(.title3.bold())
+                        .padding(.horizontal)
+
+                    VStack(spacing: 0) {
+                        Toggle(isOn: $nuggetsReady) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Nuggets Ready")
+                                    .font(.body)
+                                Text("When your content is processed")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+
+                        Divider().padding(.horizontal)
+
+                        Toggle(isOn: $streakReminders) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Streak Reminders")
+                                    .font(.body)
+                                Text("Daily reminder to maintain your streak")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+
+                        Divider().padding(.horizontal)
+
+                        Toggle(isOn: $newContent) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("New Content")
+                                    .font(.body)
+                                Text("When new RSS feed content arrives")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                    }
+                    .glassEffect(in: .rect(cornerRadius: 16))
+                    .padding(.horizontal)
+                }
+            }
+            .padding(.top)
+        }
+        .navigationTitle("Notifications")
     }
 }
 
@@ -353,6 +668,75 @@ struct StatCard: View {
         .frame(maxWidth: .infinity)
         .padding()
         .glassEffect(in: .rect(cornerRadius: 16))
+    }
+}
+
+// MARK: - Compact Stat Card
+struct CompactStatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.body)
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 2) {
+                Text(value)
+                    .font(.title3.bold())
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Theme Button
+struct ThemeButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(isSelected ? .primary : .secondary)
+
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundColor(isSelected ? .primary : .secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .background(
+                Group {
+                    if isSelected {
+                        Color.primary.opacity(0.1)
+                    } else {
+                        Color.clear
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.primary.opacity(0.3) : Color.clear, lineWidth: 1.5)
+            )
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

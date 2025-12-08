@@ -28,24 +28,13 @@ struct TutorialView: View {
 
                 TabView(selection: $currentPage) {
                     // Page 1: Welcome & Save Content
-                    TutorialPage(
-                        icon: "plus.app.fill",
-                        iconColors: [Color.goldAccent, Color.goldAccent.opacity(0.6)],
-                        title: "Save Everything",
-                        description: "Add articles, links, and content from anywhere using the share button or paste URLs directly",
-                        features: [
-                            ("Share from Safari", "square.and.arrow.up"),
-                            ("Paste URLs", "doc.on.clipboard"),
-                            ("Organize by topic", "folder")
-                        ],
-                        currentPage: $currentPage
-                    )
-                    .tag(0)
+                    ShareSheetTutorialPage(currentPage: $currentPage)
+                        .tag(0)
 
                     // Page 2: Smart Processing
                     TutorialPage(
                         icon: "sparkles",
-                        iconColors: [Color.goldAccent, Color.goldAccent.opacity(0.6)],
+                        iconColors: [Color.primary, Color.primary.opacity(0.6)],
                         title: "AI-Powered Summaries",
                         description: "Get intelligent summaries and key insights from your saved content in seconds",
                         features: [
@@ -60,7 +49,7 @@ struct TutorialView: View {
                     // Page 3: Swipe to Learn
                     TutorialPage(
                         icon: "hand.draw",
-                        iconColors: [Color.goldAccent, Color.goldAccent.opacity(0.6)],
+                        iconColors: [Color.primary, Color.primary.opacity(0.6)],
                         title: "Swipe to Learn",
                         description: "Review your content in bite-sized cards. Swipe through summaries at your own pace",
                         features: [
@@ -85,7 +74,7 @@ struct TutorialView: View {
                 HStack(spacing: 8) {
                     ForEach(0..<4) { index in
                         Circle()
-                            .fill(index == currentPage ? Color.goldAccent : Color.secondary.opacity(0.3))
+                            .fill(index == currentPage ? Color.primary : Color.secondary.opacity(0.3))
                             .frame(width: 8, height: 8)
                             .animation(.easeInOut(duration: 0.2), value: currentPage)
                     }
@@ -93,6 +82,156 @@ struct TutorialView: View {
                 .padding(.bottom, 40)
             }
         }
+    }
+}
+
+struct ShareSheetTutorialPage: View {
+    @Binding var currentPage: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            // Title and description
+            VStack(spacing: 16) {
+                Text("Save Content with Share Sheet")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                Text("When you find content in Safari or any app, use the Share Sheet to save it to Nugget")
+                    .font(.system(size: 16))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom, 32)
+
+            // Visual step-by-step guide
+            VStack(spacing: 16) {
+                // Step 1
+                ShareSheetStep(
+                    number: 1,
+                    icon: "safari",
+                    title: "Find content in any app",
+                    description: "Safari, News, Twitter, etc."
+                )
+
+                // Step 2
+                ShareSheetStep(
+                    number: 2,
+                    icon: "square.and.arrow.up",
+                    title: "Tap the Share button",
+                    description: "Usually at the top or bottom"
+                )
+
+                // Step 3
+                ShareSheetStep(
+                    number: 3,
+                    icon: "checkmark.circle.fill",
+                    title: "Select Nugget",
+                    description: "Content saved instantly"
+                )
+            }
+            .padding(.horizontal, 32)
+            .padding(.bottom, 24)
+
+            // Pro tip section
+            VStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.yellow)
+                    Text("Pro Tip")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+
+                Text("You can drag Nugget to the front of your Share Sheet for quicker access. Just scroll to the end, tap Edit Actions, and reorder apps.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.yellow.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.yellow.opacity(0.3), lineWidth: 1)
+            )
+            .padding(.horizontal, 32)
+
+            Spacer()
+
+            // Continue button
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    currentPage += 1
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Continue")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 14))
+                }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.primary)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 14)
+                .glassEffect(in: .capsule)
+            }
+            .padding(.bottom, 20)
+
+            Spacer(minLength: 60)
+        }
+    }
+}
+
+struct ShareSheetStep: View {
+    let number: Int
+    let icon: String
+    let title: String
+    let description: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            // Step number circle
+            ZStack {
+                Circle()
+                    .fill(Color.primary.opacity(0.1))
+                    .frame(width: 40, height: 40)
+
+                Text("\(number)")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+            }
+
+            // Icon
+            Image(systemName: icon)
+                .font(.system(size: 24))
+                .foregroundColor(.primary)
+                .frame(width: 32)
+
+            // Text content
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text(description)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffect(in: .rect(cornerRadius: 12))
     }
 }
 
@@ -129,7 +268,7 @@ struct TutorialPage: View {
                     HStack(spacing: 12) {
                         Image(systemName: feature.1)
                             .font(.system(size: 16))
-                            .foregroundColor(.goldAccent)
+                            .foregroundColor(.primary)
                             .frame(width: 24)
 
                         Text(feature.0)

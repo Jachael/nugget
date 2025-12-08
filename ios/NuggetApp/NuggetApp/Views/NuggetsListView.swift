@@ -8,17 +8,15 @@ struct NuggetsListView: View {
     @State private var showingNuggetDetail = false
     @State private var lastRefreshTime = Date.distantPast
     @State private var searchText = ""
-    @State private var filterProcessed = true
-    @State private var filterUnprocessed = true
+    @StateObject private var badgeManager = NuggetBadgeManager.shared
+
+    /// Only show fully processed nuggets (those with summaries)
+    var processedNuggets: [Nugget] {
+        nuggets.filter { $0.summary != nil }
+    }
 
     var filteredNuggets: [Nugget] {
-        var result = nuggets
-
-        // Apply processed/unprocessed filter
-        result = result.filter { nugget in
-            let isProcessed = nugget.summary != nil
-            return (isProcessed && filterProcessed) || (!isProcessed && filterUnprocessed)
-        }
+        var result = processedNuggets
 
         // Apply search filter
         if !searchText.isEmpty {
@@ -34,43 +32,15 @@ struct NuggetsListView: View {
         return result.sorted { $0.createdAt > $1.createdAt }
     }
 
-    var processedCount: Int {
-        nuggets.filter { $0.summary != nil }.count
-    }
-
-    var unprocessedCount: Int {
-        nuggets.filter { $0.summary == nil && $0.isReady }.count
+    var totalCount: Int {
+        processedNuggets.count
     }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Header
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Nuggets \(SparkSymbol.spark)")
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundColor(.primary)
-
-                        Spacer()
-
-                        // Stats badge
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.stack.3d.up.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.goldAccent)
-                            Text("\(nuggets.count)")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("total")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                    }
-
+                // Filter bar
+                VStack(spacing: 12) {
                     // Search bar
                     HStack(spacing: 12) {
                         Image(systemName: "magnifyingglass")
@@ -96,38 +66,18 @@ struct NuggetsListView: View {
                     .padding(.vertical, 12)
                     .glassEffect(in: .capsule)
 
-                    // Filter chips
+                    // Nugget count
                     HStack(spacing: 8) {
-                        FilterChip(
-                            title: "Processed",
-                            count: processedCount,
-                            isSelected: filterProcessed
-                        ) {
-                            withAnimation(.spring(response: 0.3)) {
-                                filterProcessed.toggle()
-                            }
-                            HapticFeedback.selection()
-                        }
-
-                        FilterChip(
-                            title: "Unprocessed",
-                            count: unprocessedCount,
-                            isSelected: filterUnprocessed
-                        ) {
-                            withAnimation(.spring(response: 0.3)) {
-                                filterUnprocessed.toggle()
-                            }
-                            HapticFeedback.selection()
-                        }
+                        Text("\(totalCount) nugget\(totalCount == 1 ? "" : "s")")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
 
                         Spacer()
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
                 .padding(.top, 8)
-                .padding(.bottom, 16)
-                .background(Color(UIColor.systemBackground))
+                .padding(.bottom, 12)
 
                 // Content
                 if isLoading && nuggets.isEmpty {
@@ -156,23 +106,21 @@ struct NuggetsListView: View {
                     }
                     .padding()
                     Spacer()
-                } else if nuggets.isEmpty {
+                } else if processedNuggets.isEmpty {
                     emptyStateView
                 } else if filteredNuggets.isEmpty {
-                    // No results for current filters
+                    // No results for search
                     Spacer()
                     VStack(spacing: 16) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
+                        Image(systemName: "magnifyingglass")
                             .font(.system(size: 50))
                             .foregroundColor(.secondary)
-                        Text("No nuggets match your filters")
+                        Text("No nuggets match your search")
                             .font(.headline)
                             .foregroundColor(.secondary)
-                        Button("Clear Filters") {
+                        Button("Clear Search") {
                             withAnimation(.spring(response: 0.3)) {
                                 searchText = ""
-                                filterProcessed = true
-                                filterUnprocessed = true
                             }
                         }
                         .buttonStyle(LiquidGlassButtonStyle())
@@ -181,25 +129,32 @@ struct NuggetsListView: View {
                     Spacer()
                 } else {
                     // Nuggets list
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(filteredNuggets) { nugget in
-                                NuggetCard(nugget: nugget) {
-                                    selectedNugget = nugget
-                                    showingNuggetDetail = true
-                                }
+                    List {
+                        ForEach(filteredNuggets) { nugget in
+                            NuggetCard(nugget: nugget) {
+                                selectedNugget = nugget
+                                showingNuggetDetail = true
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .listRowSeparator(.hidden)
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                let nugget = filteredNuggets[index]
+                                deleteNugget(nugget)
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.bottom, 20)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
                     .refreshable {
                         await loadNuggetsAsync()
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Nuggets")
             .sheet(isPresented: $showingNuggetDetail) {
                 if let nugget = selectedNugget {
                     NuggetDetailView(nugget: nugget)
@@ -216,6 +171,14 @@ struct NuggetsListView: View {
                     await loadNuggetsAsync()
                 }
             }
+            .onAppear {
+                // Mark all nuggets as seen when viewing the Nuggets tab
+                badgeManager.markAllAsSeen(nuggets)
+            }
+            .onChange(of: nuggets) { _, newNuggets in
+                // When nuggets change and user is viewing this tab, mark as seen
+                badgeManager.markAllAsSeen(newNuggets)
+            }
         }
     }
 
@@ -223,15 +186,16 @@ struct NuggetsListView: View {
         VStack(spacing: 20) {
             Spacer()
 
-            Image(systemName: "square.stack.3d.up")
+            Image(systemName: "sparkles.rectangle.stack.fill")
                 .font(.system(size: 60))
                 .foregroundColor(.secondary)
                 .symbolRenderingMode(.hierarchical)
 
-            Text("No Nuggets Yet")
-                .font(.title2.bold())
+            Text("No nuggets yet")
+                .font(.title3)
+                .fontWeight(.medium)
 
-            Text("Save articles, videos, or links to your feed to start building your knowledge library")
+            Text("Save articles or links to your feed to start building your knowledge library")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -264,6 +228,8 @@ struct NuggetsListView: View {
                     isLoading = false
                     lastRefreshTime = Date()
                 }
+                // Update badge count (will be cleared since user is viewing this tab)
+                badgeManager.updateBadgeCount(with: loadedNuggets)
             }
         } catch {
             await MainActor.run {
@@ -276,6 +242,23 @@ struct NuggetsListView: View {
     private func loadNuggets() {
         Task {
             await loadNuggetsAsync()
+        }
+    }
+
+    private func deleteNugget(_ nugget: Nugget) {
+        Task {
+            do {
+                try await NuggetService.shared.deleteNugget(nuggetId: nugget.nuggetId)
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        nuggets.removeAll { $0.nuggetId == nugget.nuggetId }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Failed to delete nugget"
+                }
+            }
         }
     }
 }
@@ -364,7 +347,7 @@ struct NuggetCard: View {
                         } else {
                             Text("Processing...")
                                 .font(.caption)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.secondary)
                                 .italic()
                         }
 

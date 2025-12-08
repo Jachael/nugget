@@ -1,19 +1,27 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @StateObject private var badgeManager = NuggetBadgeManager.shared
+
     init() {
         // Customize tab bar appearance
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()
 
-        // Make tab bar slightly more compact
+        // Configure icon colors
+        // Inactive tabs: grey (secondary)
         appearance.stackedLayoutAppearance.normal.iconColor = UIColor.secondaryLabel
+        // Active tabs: black (label)
         appearance.stackedLayoutAppearance.selected.iconColor = UIColor.label
+
+        // Configure title text
         appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .medium)
+            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: UIColor.secondaryLabel
         ]
         appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: UIColor.label
         ]
 
         UITabBar.appearance().standardAppearance = appearance
@@ -37,8 +45,9 @@ struct MainTabView: View {
 
             NuggetsListView()
                 .tabItem {
-                    Label("Nuggets", systemImage: "square.stack.3d.up.fill")
+                    Label("Nuggets", systemImage: "sparkles.rectangle.stack.fill")
                 }
+                .badge(badgeManager.unreadCount > 0 ? badgeManager.unreadCount : 0)
 
             AudioView()
                 .tabItem {
@@ -47,7 +56,7 @@ struct MainTabView: View {
 
             SettingsView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.circle.fill")
+                    Label("Profile", systemImage: "brain.head.profile.fill")
                 }
         }
     }

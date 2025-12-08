@@ -39,7 +39,7 @@ struct LoginView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(.orange)
+                                .foregroundColor(.secondary)
                             Text(error)
                                 .font(.system(size: 13))
                                 .foregroundColor(.primary.opacity(0.8))
@@ -47,7 +47,7 @@ struct LoginView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .glassEffect(.regular.tint(.orange), in: .capsule)
+                        .glassEffect(.regular, in: .capsule)
                         .padding(.horizontal, 40)
                     }
 

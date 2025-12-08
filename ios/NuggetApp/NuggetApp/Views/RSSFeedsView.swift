@@ -13,7 +13,7 @@ struct RSSFeedsView: View {
 
     private var isPremium: Bool {
         let tier = authService.currentUser?.subscriptionTier ?? "free"
-        return tier == "pro"
+        return tier == "pro" || tier == "ultimate"
     }
 
     private var categories: [String] {
@@ -51,13 +51,13 @@ struct RSSFeedsView: View {
                         if let successMessage = successMessage {
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
+                                    .foregroundColor(.primary)
                                 Text(successMessage)
                                     .font(.subheadline)
                             }
                             .padding()
                             .frame(maxWidth: .infinity)
-                            .background(Color.green.opacity(0.1))
+                            .background(Color.secondary.opacity(0.1))
                             .cornerRadius(12)
                             .padding(.horizontal)
                         }
@@ -71,7 +71,7 @@ struct RSSFeedsView: View {
                             }
                             .padding()
                             .frame(maxWidth: .infinity)
-                            .background(Color.red.opacity(0.1))
+                            .background(Color.secondary.opacity(0.1))
                             .cornerRadius(12)
                             .padding(.horizontal)
                         }
@@ -86,19 +86,14 @@ struct RSSFeedsView: View {
                                 HStack {
                                     if isFetching {
                                         ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
                                         Image(systemName: "arrow.clockwise")
                                     }
                                     Text(isFetching ? "Fetching feeds..." : "Fetch Latest Content")
                                 }
-                                .font(.headline)
-                                .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .cornerRadius(12)
                             }
+                            .buttonStyle(GlassProminentButtonStyle())
                             .disabled(isFetching)
                             .padding(.horizontal)
                         }
@@ -257,7 +252,7 @@ struct FeedRow: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.purple)
+                                .background(Color.secondary)
                                 .cornerRadius(4)
                         }
                     }
@@ -269,7 +264,7 @@ struct FeedRow: View {
 
                     Text(feed.category.capitalized)
                         .font(.caption)
-                        .foregroundColor(.blue)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -296,15 +291,16 @@ struct CategoryFilterChip: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.subheadline.bold())
-                .foregroundColor(isSelected ? .white : .primary)
+                .foregroundColor(isSelected ? (colorScheme == .dark ? .black : .white) : .primary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.blue : Color(.systemGray5))
+                .background(isSelected ? (colorScheme == .dark ? Color.white : Color.black) : Color(.systemGray5))
                 .cornerRadius(20)
         }
     }

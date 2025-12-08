@@ -1,0 +1,93 @@
+{
+  "identifier" : "8A5C6B7D-1234-5678-9ABC-DEF012345678",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "1234567890",
+    "_developerTeamID" : "XXXXXXXXXX",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 756435892.25226796,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "nugget_premium",
+      "localizations" : [
+        {
+          "description" : "Premium subscriptions for Nugget",
+          "displayName" : "Nugget Premium",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "Nugget Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "pro_001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "10 nuggets per day, auto-processing, smart grouping, and priority support",
+              "displayName" : "Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.nugget.pro",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro Monthly",
+          "subscriptionGroupID" : "nugget_premium",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "ultimate_001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited nuggets, RSS feeds, priority processing, and early access",
+              "displayName" : "Ultimate",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.nugget.ultimate",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Ultimate Monthly",
+          "subscriptionGroupID" : "nugget_premium",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

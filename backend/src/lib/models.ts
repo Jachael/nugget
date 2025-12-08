@@ -1,7 +1,9 @@
+export type SubscriptionTier = 'free' | 'pro' | 'ultimate';
+
 export interface UserPreferences {
   interests: string[]; // e.g., ['sport', 'finance', 'technology', 'career']
   dailyNuggetLimit: number; // 1 for free, more for paid
-  subscriptionTier: 'free' | 'premium';
+  subscriptionTier: SubscriptionTier;
   customCategories?: string[];
   categoryWeights?: Record<string, number>; // For premium: preference weighting
 }
@@ -23,7 +25,7 @@ export interface User {
   onboardingCompleted?: boolean;
   settings?: Record<string, unknown>;
   // Subscription fields
-  subscriptionTier?: 'free' | 'plus' | 'pro';
+  subscriptionTier?: SubscriptionTier;
   subscriptionExpiresAt?: string; // ISO date string
   originalTransactionId?: string;
   lastReceiptVerification?: number; // Timestamp of last verification
@@ -143,7 +145,7 @@ export interface LLMSummarisationResult {
 export interface UpdatePreferencesInput {
   interests?: string[];
   dailyNuggetLimit?: number;
-  subscriptionTier?: 'free' | 'premium';
+  subscriptionTier?: SubscriptionTier;
   customCategories?: string[];
   categoryWeights?: Record<string, number>;
 }
@@ -151,7 +153,7 @@ export interface UpdatePreferencesInput {
 export interface PreferencesResponse {
   interests: string[];
   dailyNuggetLimit: number;
-  subscriptionTier: 'free' | 'premium';
+  subscriptionTier: SubscriptionTier;
   customCategories?: string[];
   categoryWeights?: Record<string, number>;
   onboardingCompleted: boolean;

@@ -1,9 +1,9 @@
 import SwiftUI
 
-// MARK: - Gold Accent Color
+// MARK: - Neutral Accent Color (monochromatic)
 extension Color {
-    static let goldAccent = Color(red: 0.949, green: 0.773, blue: 0.447) // #F2C572
-    static let goldAccentLight = Color(red: 0.949, green: 0.773, blue: 0.447).opacity(0.3)
+    static let goldAccent = Color.secondary // Changed from gold to neutral
+    static let goldAccentLight = Color.secondary.opacity(0.3)
 }
 
 // MARK: - Spark Symbol
@@ -216,7 +216,7 @@ struct FaintGradientHeader: View {
     var body: some View {
         LinearGradient(
             colors: [
-                Color.goldAccent.opacity(0.05),
+                Color.primary.opacity(0.02),
                 Color.clear
             ],
             startPoint: .top,
@@ -266,12 +266,50 @@ struct SparkBullet: View {
     }
 }
 
-// MARK: - Gold Category Dot
+// MARK: - Category Dot
 struct GoldCategoryDot: View {
     var body: some View {
         Circle()
-            .fill(Color.goldAccent)
+            .fill(Color.secondary)
             .frame(width: 6, height: 6)
+    }
+}
+
+// MARK: - Glass Button Styles
+
+/// Prominent button style with black background in light mode, white background in dark mode
+struct GlassProminentButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) var colorScheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(colorScheme == .dark ? .black : .white)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(colorScheme == .dark ? Color.white : Color.black)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+/// Standard glass button style with black/white theme
+struct GlassButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) var colorScheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(colorScheme == .dark ? .black : .white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(colorScheme == .dark ? Color.white : Color.black)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

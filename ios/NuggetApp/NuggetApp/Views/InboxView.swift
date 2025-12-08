@@ -77,6 +77,8 @@ struct InboxView: View {
     @State private var isLoadingMore = false
     @State private var hasInitiallyLoaded = false
     @State private var lastRefreshTime = Date.distantPast
+    @State private var processingCheckTimer: Timer?
+    @StateObject private var badgeManager = NuggetBadgeManager.shared
 
     var scrapedNuggets: [Nugget] {
         sortedFilteredNuggets.filter { $0.summary == nil }
@@ -224,13 +226,7 @@ struct InboxView: View {
                         } label: {
                             ZStack {
                                 Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Color.goldAccent.opacity(0.1), Color.clear],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
+                                    .fill(Color.clear)
                                     .frame(width: 56, height: 56)
                                     .glassEffect(.regular.interactive(), in: .circle)
 
@@ -261,11 +257,17 @@ struct InboxView: View {
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(20)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationBackground(.ultraThinMaterial)
             }
             .liquidModalTransition(isPresented: showingAddNugget)
             .task {
                 // Load content asynchronously
                 await loadNuggetsIfNeeded()
+            }
+            .onDisappear {
+                // Clean up timer when leaving the view
+                processingCheckTimer?.invalidate()
+                processingCheckTimer = nil
             }
         }
     }
@@ -378,13 +380,13 @@ struct InboxView: View {
         VStack {
             Spacer()
             VStack(spacing: 20) {
-                Image(systemName: "tray")
+                Image(systemName: "list.bullet.rectangle.fill")
                     .font(.system(size: 60))
                     .foregroundColor(.secondary)
                     .symbolRenderingMode(.hierarchical)
 
                 VStack(spacing: 8) {
-                    Text("No nuggets yet")
+                    Text("No content yet")
                         .font(.title3)
                         .fontWeight(.medium)
                     Text("Tap + to save your first piece of content")
@@ -445,15 +447,49 @@ struct InboxView: View {
                 await MainActor.run {
                     isProcessing = false
                     showProcessSuccess = true
+                    // Start polling for new nuggets in background
+                    startProcessingCheck()
                 }
-                // Wait a bit then reload
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                loadNuggets()
             } catch {
                 await MainActor.run {
                     isProcessing = false
                     errorMessage = "Failed to process nuggets: \(error.localizedDescription)"
                 }
+            }
+        }
+    }
+
+    /// Start checking for newly processed nuggets in background
+    private func startProcessingCheck() {
+        // Cancel any existing timer
+        processingCheckTimer?.invalidate()
+
+        // Check every 5 seconds for up to 2 minutes
+        var checksRemaining = 24 // 24 checks * 5 seconds = 2 minutes
+
+        processingCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { timer in
+            checksRemaining -= 1
+
+            Task {
+                do {
+                    let allNuggets = try await NuggetService.shared.listNuggets()
+                    await MainActor.run {
+                        // Update badge count - this will notify user of new processed nuggets
+                        badgeManager.updateBadgeCount(with: allNuggets)
+
+                        // If there are new processed nuggets or we've run out of checks, stop
+                        if badgeManager.unreadCount > 0 || checksRemaining <= 0 {
+                            timer.invalidate()
+                            processingCheckTimer = nil
+                        }
+                    }
+                } catch {
+                    print("Background check failed: \(error)")
+                }
+            }
+
+            if checksRemaining <= 0 {
+                timer.invalidate()
             }
         }
     }
@@ -648,7 +684,7 @@ struct NuggetRowView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkles")
                             .font(.caption)
-                            .foregroundColor(.goldAccent)
+                            .foregroundColor(.secondary)
                         Text("Ready to process")
                             .font(.subheadline)
                             .italic()
@@ -659,44 +695,24 @@ struct NuggetRowView: View {
 
                 // Bottom row with category and time
                 HStack {
-                    // Category badge with gold accent
+                    // Category badge with neutral styling
                     if let category = nugget.category {
                         HStack(spacing: 4) {
                             Text(SparkSymbol.spark)
                                 .font(.system(size: 10))
-                                .foregroundColor(.goldAccent)
+                                .foregroundColor(.secondary)
                             Text(category.capitalized)
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            LinearGradient(
-                                colors: [
-                                    Color.goldAccent.opacity(0.15),
-                                    Color.goldAccent.opacity(0.05)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color.goldAccent.opacity(0.3), lineWidth: 0.5)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-
-                    // Processing indicator if being processed
-                    if nugget.summary == nil && nugget.title != nil {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                            Text("Processing...")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        .transition(.opacity.combined(with: .scale))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
 
                     Spacer()
@@ -724,18 +740,8 @@ struct NuggetRowView: View {
     }
 
     private func getCategoryColor(_ category: String) -> Color {
-        switch category.lowercased() {
-        case "business": return .green
-        case "sport": return .red
-        case "technology": return .blue
-        case "career": return .purple
-        case "health": return .pink
-        case "science": return .indigo
-        case "entertainment": return .orange
-        case "politics": return .brown
-        case "education": return .teal
-        default: return .gray
-        }
+        // All categories use neutral colors now
+        return .secondary
     }
 
     private func timeAgo(from date: Date) -> String {
@@ -781,7 +787,7 @@ struct ProcessBanner: View {
                 if !canProcess {
                     Text("Add at least 2 items to process")
                         .font(.caption)
-                        .foregroundColor(.orange)
+                        .foregroundColor(.secondary)
                 } else {
                     Text("Uses AI to create learning nuggets")
                         .font(.caption)
@@ -827,24 +833,46 @@ struct ProcessBanner: View {
             }
         }
         .padding()
-        .glassEffect(
-            canProcess ? .regular : .regular.tint(.orange),
-            in: .rect
-        )
+        .glassEffect(.regular, in: .rect)
     }
 }
 
 struct AddNuggetView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var authService: AuthService
     let onSave: (Nugget) -> Void
 
     @State private var selectedTab = 0
     @State private var url = ""
     @State private var title = ""
     @State private var category = ""
-    @State private var selectedRSSFeed: RSSFeed?
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    // RSS Feed states
+    @State private var feeds: [CatalogFeed] = []
+    @State private var subscriptions: [FeedSubscription] = []
+    @State private var isLoadingFeeds = true
+    @State private var selectedCategory: String?
+    @State private var successMessage: String?
+    @State private var subscribingFeedId: String?
+
+    private var isPremium: Bool {
+        let tier = authService.currentUser?.subscriptionTier ?? "free"
+        return tier == "pro" || tier == "ultimate"
+    }
+
+    private var categories: [String] {
+        let allCategories = Set(feeds.map { $0.category })
+        return Array(allCategories).sorted()
+    }
+
+    private var filteredFeeds: [CatalogFeed] {
+        if let category = selectedCategory {
+            return feeds.filter { $0.category == category }
+        }
+        return feeds
+    }
 
     private func detectSourceType(from url: String) -> String {
         let urlLower = url.lowercased()
@@ -884,45 +912,55 @@ struct AddNuggetView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Custom segmented control
-                HStack(spacing: 0) {
+                HStack(spacing: 4) {
                     Button {
-                        selectedTab = 0
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedTab = 0
+                        }
                     } label: {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: "link")
                                 .font(.subheadline)
                             Text("URL")
+                                .font(.subheadline)
                                 .fontWeight(.medium)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .glassEffect(
-                            selectedTab == 0 ? .regular : .clear,
-                            in: .rect(cornerRadius: 10)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selectedTab == 0 ? Color.primary.opacity(0.1) : Color.clear)
                         )
                     }
                     .foregroundColor(selectedTab == 0 ? .primary : .secondary)
 
                     Button {
-                        selectedTab = 1
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedTab = 1
+                        }
                     } label: {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: "antenna.radiowaves.left.and.right")
                                 .font(.subheadline)
                             Text("RSS Feed")
+                                .font(.subheadline)
                                 .fontWeight(.medium)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .glassEffect(
-                            selectedTab == 1 ? .regular : .clear,
-                            in: .rect(cornerRadius: 10)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selectedTab == 1 ? Color.primary.opacity(0.1) : Color.clear)
                         )
                     }
                     .foregroundColor(selectedTab == 1 ? .primary : .secondary)
                 }
-                .padding()
-                .glassEffect(in: .rect)
+                .padding(4)
+                .glassEffect(in: .rect(cornerRadius: 10))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
 
                 TabView(selection: $selectedTab) {
                     urlInputView
@@ -982,10 +1020,10 @@ struct AddNuggetView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
+                                        .foregroundColor(.secondary)
                                     Text("Twitter/X Not Supported")
                                         .font(.subheadline.bold())
-                                        .foregroundColor(.orange)
+                                        .foregroundColor(.primary)
                                     Spacer()
                                 }
                                 Text("Due to Twitter/X's restrictions, we cannot extract content from tweets. Please save articles from other sources instead.")
@@ -994,7 +1032,7 @@ struct AddNuggetView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .padding()
-                            .glassEffect(.regular.tint(.orange), in: .rect(cornerRadius: 10))
+                            .glassEffect(.regular, in: .rect(cornerRadius: 10))
                         }
 
                         TextField("Title (optional)", text: $title)
@@ -1046,52 +1084,164 @@ struct AddNuggetView: View {
 
     private var rssFeedView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Popular RSS Feeds")
-                    .font(.headline)
+            VStack(spacing: 20) {
+                // Header
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Subscribe to RSS Feeds")
+                        .font(.headline)
+                    Text("Get AI-powered daily recaps from quality sources")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+
+                // Success message
+                if let successMessage = successMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.primary)
+                        Text(successMessage)
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 10))
                     .padding(.horizontal)
+                }
 
-                VStack(spacing: 12) {
-                    ForEach(RSSFeed.popularFeeds) { feed in
-                        Button {
-                            selectedRSSFeed = feed
-                            saveRSSFeed(feed)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: feed.icon)
-                                    .font(.title2)
-                                    .foregroundColor(.primary)
-                                    .frame(width: 40)
+                // Error message
+                if let error = errorMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 10))
+                    .padding(.horizontal)
+                }
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(feed.name)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.primary)
-                                    Text(feed.description)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
+                // Category filter
+                if !categories.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            CategoryChip(
+                                title: "All",
+                                isSelected: selectedCategory == nil
+                            ) {
+                                selectedCategory = nil
+                            }
 
-                                Spacer()
-
-                                if isSaving && selectedRSSFeed?.id == feed.id {
-                                    ProgressView()
-                                } else {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.primary)
+                            ForEach(categories, id: \.self) { cat in
+                                CategoryChip(
+                                    title: cat.capitalized,
+                                    isSelected: selectedCategory == cat
+                                ) {
+                                    selectedCategory = cat
                                 }
                             }
-                            .padding()
-                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
                         }
-                        .disabled(isSaving)
+                        .padding(.horizontal)
                     }
                 }
-                .padding(.horizontal)
+
+                // Feed list
+                if isLoadingFeeds {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading feeds...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                } else if feeds.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                            .font(.largeTitle)
+                            .foregroundColor(.secondary)
+                        Text("No feeds available")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                } else {
+                    LazyVStack(spacing: 12) {
+                        ForEach(filteredFeeds) { feed in
+                            FeedSubscribeRow(
+                                feed: feed,
+                                isPremium: isPremium,
+                                isSubscribing: subscribingFeedId == feed.id,
+                                onSubscribe: {
+                                    Task {
+                                        await subscribeFeed(feed: feed)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal)
+                }
             }
             .padding(.vertical)
+        }
+        .task {
+            await loadFeeds()
+        }
+    }
+
+    private func loadFeeds() async {
+        isLoadingFeeds = true
+        errorMessage = nil
+
+        do {
+            let response = try await FeedService.shared.getFeeds()
+            feeds = response.catalog
+            subscriptions = response.subscriptions
+            isLoadingFeeds = false
+        } catch {
+            errorMessage = "Failed to load feeds"
+            isLoadingFeeds = false
+        }
+    }
+
+    private func subscribeFeed(feed: CatalogFeed) async {
+        // Check premium requirement
+        if feed.isPremium && !isPremium && !feed.isSubscribed {
+            errorMessage = "This feed requires a Pro subscription"
+            return
+        }
+
+        errorMessage = nil
+        successMessage = nil
+        subscribingFeedId = feed.id
+
+        do {
+            let response = try await FeedService.shared.subscribeFeed(
+                rssFeedId: feed.id,
+                subscribe: !feed.isSubscribed
+            )
+
+            successMessage = response.message
+
+            // Refresh feeds to update subscription status
+            await loadFeeds()
+
+            // Clear success message after 3 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                successMessage = nil
+            }
+
+            subscribingFeedId = nil
+        } catch {
+            errorMessage = "Failed to update subscription"
+            subscribingFeedId = nil
         }
     }
 
@@ -1125,50 +1275,116 @@ struct AddNuggetView: View {
         }
     }
 
-    private func saveRSSFeed(_ feed: RSSFeed) {
-        isSaving = true
-        errorMessage = nil
+}
 
-        let request = CreateNuggetRequest(
-            sourceUrl: feed.url,
-            sourceType: "url",
-            rawTitle: feed.name,
-            rawText: nil,
-            category: feed.category
-        )
+// MARK: - Category Chip
+struct CategoryChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
 
-        Task {
-            do {
-                let nugget = try await NuggetService.shared.createNugget(request: request)
-                await MainActor.run {
-                    onSave(nugget)
-                    dismiss()
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to save: \(error.localizedDescription)"
-                    isSaving = false
-                    selectedRSSFeed = nil
-                }
-            }
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundColor(isSelected ? .white : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.primary : Color.clear)
+                )
+                .glassEffect(
+                    isSelected ? .clear : .regular,
+                    in: .capsule
+                )
         }
     }
 }
 
-struct RSSFeed: Identifiable {
-    let id = UUID()
-    let name: String
-    let url: String
-    let description: String
-    let category: String
-    let icon: String
+// MARK: - Feed Subscribe Row
+struct FeedSubscribeRow: View {
+    let feed: CatalogFeed
+    let isPremium: Bool
+    let isSubscribing: Bool
+    let onSubscribe: () -> Void
 
-    static let popularFeeds: [RSSFeed] = [
-        RSSFeed(name: "BBC News", url: "https://feeds.bbci.co.uk/news/rss.xml", description: "Latest world news", category: "news", icon: "globe"),
-        RSSFeed(name: "BBC Technology", url: "https://feeds.bbci.co.uk/news/technology/rss.xml", description: "Tech news and analysis", category: "technology", icon: "cpu"),
-        RSSFeed(name: "BBC Business", url: "https://feeds.bbci.co.uk/news/business/rss.xml", description: "Business and finance news", category: "business", icon: "chart.line.uptrend.xyaxis"),
-        RSSFeed(name: "BBC Science", url: "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml", description: "Science & environment", category: "science", icon: "flask"),
-        RSSFeed(name: "BBC Health", url: "https://feeds.bbci.co.uk/news/health/rss.xml", description: "Health news", category: "health", icon: "heart"),
-        RSSFeed(name: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/rss.xml", description: "Sports news", category: "sport", icon: "figure.run")
-    ]
+    private func iconForCategory(_ category: String) -> String {
+        switch category.lowercased() {
+        case "news": return "newspaper"
+        case "technology": return "cpu"
+        case "business": return "chart.line.uptrend.xyaxis"
+        case "science": return "flask"
+        case "health": return "heart"
+        case "sport": return "figure.run"
+        case "entertainment": return "film"
+        default: return "globe"
+        }
+    }
+
+    var body: some View {
+        Button(action: onSubscribe) {
+            HStack(spacing: 14) {
+                // Icon
+                Image(systemName: iconForCategory(feed.category))
+                    .font(.title3)
+                    .foregroundColor(.primary)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular, in: .circle)
+
+                // Content
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(feed.name)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+
+                        if feed.isPremium {
+                            Text("PRO")
+                                .font(.caption2.bold())
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary)
+                                .cornerRadius(4)
+                        }
+                    }
+
+                    Text(feed.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+
+                    Text(feed.category.capitalized)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // Subscribe button/indicator
+                if isSubscribing {
+                    ProgressView()
+                        .frame(width: 24, height: 24)
+                } else if feed.isSubscribed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.primary)
+                } else if feed.isPremium && !isPremium {
+                    Image(systemName: "lock.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                } else {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.primary)
+                }
+            }
+            .padding()
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+        }
+        .disabled(isSubscribing || (feed.isPremium && !isPremium && !feed.isSubscribed))
+    }
 }
