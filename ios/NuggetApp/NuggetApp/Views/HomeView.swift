@@ -353,8 +353,10 @@ struct HomeView: View {
                             .padding(.horizontal)
                         }
 
-                        // Recent Nuggets Section - show all recent processed nuggets
-                        let recentNuggets = nuggets.filter { $0.summary != nil && $0.isReady }.prefix(5)
+                        // Recent Nuggets Section - show all recent processed nuggets, sorted by newest first
+                        let recentNuggets = nuggets.filter { $0.summary != nil && $0.isReady }
+                            .sorted { $0.createdAt > $1.createdAt }
+                            .prefix(5)
                         if !recentNuggets.isEmpty {
                             Text("Recent Nuggets \(SparkSymbol.spark)")
                                 .font(.title3.bold())
@@ -676,6 +678,9 @@ struct HomeView: View {
     private func startSessionForTile(_ tile: ContentTile) {
         errorMessage = nil
 
+        // Reset session first to ensure navigation triggers
+        session = nil
+
         switch tile.tileType {
         case .catchUp:
             // Show all unread non-digest nuggets directly from local data
@@ -691,11 +696,13 @@ struct HomeView: View {
             if nonDigestUnread.isEmpty {
                 errorMessage = "You're all caught up!"
             } else {
-                session = Session(
-                    sessionId: nil,
-                    nuggets: nonDigestUnread,
-                    message: nil
-                )
+                DispatchQueue.main.async {
+                    session = Session(
+                        sessionId: nil,
+                        nuggets: nonDigestUnread,
+                        message: nil
+                    )
+                }
             }
 
         case .category(let category):
@@ -713,11 +720,13 @@ struct HomeView: View {
             if categoryUnread.isEmpty {
                 errorMessage = "No unread \(category) nuggets"
             } else {
-                session = Session(
-                    sessionId: nil,
-                    nuggets: categoryUnread,
-                    message: nil
-                )
+                DispatchQueue.main.async {
+                    session = Session(
+                        sessionId: nil,
+                        nuggets: categoryUnread,
+                        message: nil
+                    )
+                }
             }
 
         case .digests:
@@ -727,11 +736,13 @@ struct HomeView: View {
             if digestNuggets.isEmpty {
                 errorMessage = "No unread digests"
             } else {
-                session = Session(
-                    sessionId: nil,
-                    nuggets: digestNuggets,
-                    message: nil
-                )
+                DispatchQueue.main.async {
+                    session = Session(
+                        sessionId: nil,
+                        nuggets: digestNuggets,
+                        message: nil
+                    )
+                }
             }
 
         }
