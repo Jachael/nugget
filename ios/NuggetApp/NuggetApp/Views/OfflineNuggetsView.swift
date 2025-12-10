@@ -145,12 +145,12 @@ struct OfflineNuggetsView: View {
             }
 
             Toggle("Enable Offline Mode", isOn: $settings.isEnabled)
-                .onChange(of: settings.isEnabled) { _ in
+                .onChange(of: settings.isEnabled) { _, _ in
                     offlineService.saveSettings(settings)
                 }
 
             Toggle("Auto-cache Completed Nuggets", isOn: $settings.autoCache)
-                .onChange(of: settings.autoCache) { _ in
+                .onChange(of: settings.autoCache) { _, _ in
                     offlineService.saveSettings(settings)
                 }
 
@@ -164,7 +164,7 @@ struct OfflineNuggetsView: View {
                     Text("500 MB").tag(500)
                 }
                 .pickerStyle(MenuPickerStyle())
-                .onChange(of: settings.storageLimitMB) { _ in
+                .onChange(of: settings.storageLimitMB) { _, _ in
                     offlineService.saveSettings(settings)
                     offlineService.cleanupOldCache(limitMB: settings.storageLimitMB)
                 }

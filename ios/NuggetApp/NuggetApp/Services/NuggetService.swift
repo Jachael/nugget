@@ -3,9 +3,22 @@ import Foundation
 final class NuggetService {
     static let shared = NuggetService()
 
-    /// Lock to prevent duplicate processing of shared nuggets
-    private var isProcessingSharedNuggets = false
-    private let processingLock = NSLock()
+    /// Actor to prevent duplicate processing of shared nuggets
+    private actor ProcessingState {
+        var isProcessing = false
+
+        func startProcessing() -> Bool {
+            if isProcessing { return false }
+            isProcessing = true
+            return true
+        }
+
+        func stopProcessing() {
+            isProcessing = false
+        }
+    }
+
+    private let processingState = ProcessingState()
 
     private init() {}
 
@@ -38,19 +51,13 @@ final class NuggetService {
     @discardableResult
     func processPendingSharedNuggets() async throws -> Bool {
         // Prevent duplicate processing (race condition when app becomes active)
-        processingLock.lock()
-        if isProcessingSharedNuggets {
-            processingLock.unlock()
+        guard await processingState.startProcessing() else {
             print("Already processing shared nuggets, skipping")
             return false
         }
-        isProcessingSharedNuggets = true
-        processingLock.unlock()
 
         defer {
-            processingLock.lock()
-            isProcessingSharedNuggets = false
-            processingLock.unlock()
+            Task { await processingState.stopProcessing() }
         }
 
         guard let sharedDefaults = UserDefaults(suiteName: "group.erg.NuggetApp") else {
