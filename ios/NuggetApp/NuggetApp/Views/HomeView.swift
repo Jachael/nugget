@@ -678,9 +678,6 @@ struct HomeView: View {
     private func startSessionForTile(_ tile: ContentTile) {
         errorMessage = nil
 
-        // Reset session first to ensure navigation triggers
-        session = nil
-
         switch tile.tileType {
         case .catchUp:
             // Show all unread non-digest nuggets directly from local data
@@ -696,13 +693,11 @@ struct HomeView: View {
             if nonDigestUnread.isEmpty {
                 errorMessage = "You're all caught up!"
             } else {
-                DispatchQueue.main.async {
-                    session = Session(
-                        sessionId: nil,
-                        nuggets: nonDigestUnread,
-                        message: nil
-                    )
-                }
+                session = Session(
+                    sessionId: UUID().uuidString, // Unique ID to force navigation
+                    nuggets: nonDigestUnread,
+                    message: nil
+                )
             }
 
         case .category(let category):
@@ -720,13 +715,11 @@ struct HomeView: View {
             if categoryUnread.isEmpty {
                 errorMessage = "No unread \(category) nuggets"
             } else {
-                DispatchQueue.main.async {
-                    session = Session(
-                        sessionId: nil,
-                        nuggets: categoryUnread,
-                        message: nil
-                    )
-                }
+                session = Session(
+                    sessionId: UUID().uuidString, // Unique ID to force navigation
+                    nuggets: categoryUnread,
+                    message: nil
+                )
             }
 
         case .digests:
@@ -736,13 +729,11 @@ struct HomeView: View {
             if digestNuggets.isEmpty {
                 errorMessage = "No unread digests"
             } else {
-                DispatchQueue.main.async {
-                    session = Session(
-                        sessionId: nil,
-                        nuggets: digestNuggets,
-                        message: nil
-                    )
-                }
+                session = Session(
+                    sessionId: UUID().uuidString, // Unique ID to force navigation
+                    nuggets: digestNuggets,
+                    message: nil
+                )
             }
 
         }
