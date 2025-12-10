@@ -25,6 +25,7 @@
     "@aws-sdk/client-dynamodb": "^3.478.0",
     "@aws-sdk/client-lambda": "^3.946.0",
     "@aws-sdk/client-scheduler": "^3.946.0",
+    "@aws-sdk/client-ses": "^3.946.0",
     "@aws-sdk/client-sns": "^3.946.0",
     "@aws-sdk/lib-dynamodb": "^3.478.0",
     "apple-signin-auth": "^2.0.0",

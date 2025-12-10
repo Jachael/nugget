@@ -13,7 +13,7 @@ struct APIConfig {
         }
 
         // Use direct API Gateway URL for now
-        return URL(string: "https://esc8zwzche.execute-api.eu-west-1.amazonaws.com/v1")!
+        return URL(string: "https://1wk38vfbl2.execute-api.eu-west-1.amazonaws.com/v1")!
     }
 }
 

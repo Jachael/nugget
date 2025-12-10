@@ -8,6 +8,33 @@ enum NotificationCategory: String {
     case newContent = "NEW_CONTENT"
 }
 
+// Deep link destinations for notification navigation
+enum DeepLinkDestination: Equatable {
+    case home
+    case friends
+    case sharedWithMe
+    case nugget(String) // nuggetId
+}
+
+// Observable object for navigation state
+class NavigationCoordinator: ObservableObject {
+    static let shared = NavigationCoordinator()
+
+    @Published var pendingDestination: DeepLinkDestination?
+
+    private init() {}
+
+    func navigate(to destination: DeepLinkDestination) {
+        DispatchQueue.main.async {
+            self.pendingDestination = destination
+        }
+    }
+
+    func clearDestination() {
+        pendingDestination = nil
+    }
+}
+
 class PushNotificationService: NSObject {
     static let shared = PushNotificationService()
 
@@ -48,7 +75,14 @@ class PushNotificationService: NSObject {
             newContentCategory
         ])
 
-        // Request authorization
+        // Check current authorization status first
+        let settings = await center.notificationSettings()
+        if settings.authorizationStatus == .authorized {
+            print("Notification permission already granted")
+            return true
+        }
+
+        // Request authorization if not already granted
         let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
 
         if granted {
@@ -68,7 +102,7 @@ class PushNotificationService: NSObject {
 
     // Send device token to backend
     func sendTokenToBackend(deviceToken: String) async throws {
-        guard let url = URL(string: "\(APIConfig.baseURL)/v1/device/register") else {
+        guard let url = URL(string: "\(APIConfig.baseURL)/device/register") else {
             throw URLError(.badURL)
         }
 
@@ -128,15 +162,32 @@ class PushNotificationService: NSObject {
         let userInfo = response.notification.request.content.userInfo
         print("User tapped notification: \(userInfo)")
 
-        // Handle different notification types
+        // Extract the custom type from userInfo (sent from backend)
+        if let notificationType = userInfo["type"] as? String {
+            switch notificationType {
+            case "FRIEND_REQUEST", "FRIEND_REQUEST_ACCEPTED":
+                NavigationCoordinator.shared.navigate(to: .friends)
+                return
+            case "FRIEND_SHARE":
+                NavigationCoordinator.shared.navigate(to: .sharedWithMe)
+                return
+            case "NUGGETS_READY":
+                NavigationCoordinator.shared.navigate(to: .home)
+                return
+            default:
+                break
+            }
+        }
+
+        // Fallback to category-based handling
         let category = response.notification.request.content.categoryIdentifier
         switch category {
         case NotificationCategory.nuggetsReady.rawValue:
-            handleNuggetsReadyNotification(userInfo: userInfo)
+            NavigationCoordinator.shared.navigate(to: .home)
         case NotificationCategory.streakReminder.rawValue:
-            handleStreakReminderNotification(userInfo: userInfo)
+            NavigationCoordinator.shared.navigate(to: .home)
         case NotificationCategory.newContent.rawValue:
-            handleNewContentNotification(userInfo: userInfo)
+            NavigationCoordinator.shared.navigate(to: .home)
         default:
             break
         }

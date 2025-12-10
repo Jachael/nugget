@@ -4,15 +4,14 @@ struct NuggetsListView: View {
     @State private var nuggets: [Nugget] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var selectedNugget: Nugget?
-    @State private var showingNuggetDetail = false
+    @State private var selectedNuggetSession: Session?
     @State private var lastRefreshTime = Date.distantPast
     @State private var searchText = ""
     @StateObject private var badgeManager = NuggetBadgeManager.shared
 
-    /// Only show fully processed nuggets (those with summaries)
+    /// Only show fully processed nuggets (those with summaries and ready state)
     var processedNuggets: [Nugget] {
-        nuggets.filter { $0.summary != nil }
+        nuggets.filter { $0.summary != nil && $0.isReady }
     }
 
     var filteredNuggets: [Nugget] {
@@ -34,6 +33,10 @@ struct NuggetsListView: View {
 
     var totalCount: Int {
         processedNuggets.count
+    }
+
+    var unreadCount: Int {
+        processedNuggets.filter { $0.timesReviewed == 0 }.count
     }
 
     var body: some View {
@@ -66,11 +69,25 @@ struct NuggetsListView: View {
                     .padding(.vertical, 12)
                     .glassEffect(in: .capsule)
 
-                    // Nugget count
+                    // Nugget count with unread
                     HStack(spacing: 8) {
                         Text("\(totalCount) nugget\(totalCount == 1 ? "" : "s")")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+
+                        if unreadCount > 0 {
+                            Text("•")
+                                .foregroundColor(.secondary.opacity(0.5))
+
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.primary)
+                                    .frame(width: 6, height: 6)
+                                Text("\(unreadCount) unread")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                            }
+                        }
 
                         Spacer()
                     }
@@ -132,8 +149,13 @@ struct NuggetsListView: View {
                     List {
                         ForEach(filteredNuggets) { nugget in
                             NuggetCard(nugget: nugget) {
-                                selectedNugget = nugget
-                                showingNuggetDetail = true
+                                // Create a session with just this nugget for the SessionView
+                                let session = Session(
+                                    sessionId: nil,
+                                    nuggets: [nugget],
+                                    message: nil
+                                )
+                                selectedNuggetSession = session
                             }
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -155,14 +177,9 @@ struct NuggetsListView: View {
                 }
             }
             .navigationTitle("Nuggets")
-            .sheet(isPresented: $showingNuggetDetail) {
-                if let nugget = selectedNugget {
-                    NuggetDetailView(nugget: nugget)
-                        .presentationCornerRadius(20)
-                        .presentationBackgroundInteraction(.enabled)
-                }
+            .navigationDestination(item: $selectedNuggetSession) { nuggetSession in
+                SessionView(session: nuggetSession)
             }
-            .liquidModalTransition(isPresented: showingNuggetDetail)
             .task {
                 await loadNuggetsAsync()
             }
@@ -220,16 +237,21 @@ struct NuggetsListView: View {
         errorMessage = nil
 
         do {
-            let loadedNuggets = try await NuggetService.shared.listNuggets()
+            // Fetch both inbox and digest nuggets to show all processed content
+            async let inboxNuggets = NuggetService.shared.listNuggets(status: "inbox")
+            async let digestNuggets = NuggetService.shared.listNuggets(status: "digest")
+
+            let (inbox, digest) = try await (inboxNuggets, digestNuggets)
+            let allNuggets = inbox + digest
 
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    nuggets = loadedNuggets
+                    nuggets = allNuggets
                     isLoading = false
                     lastRefreshTime = Date()
                 }
                 // Update badge count (will be cleared since user is viewing this tab)
-                badgeManager.updateBadgeCount(with: loadedNuggets)
+                badgeManager.updateBadgeCount(with: allNuggets)
             }
         } catch {
             await MainActor.run {
@@ -307,28 +329,28 @@ struct NuggetCard: View {
         nugget.summary != nil
     }
 
+    var isUnread: Bool {
+        nugget.timesReviewed == 0
+    }
+
     var body: some View {
         ParallaxGlassCard {
             Button(action: onTap) {
                 HStack(spacing: 12) {
-                    // Status indicator
-                    VStack {
-                        if isProcessed {
-                            GoldCategoryDot()
-                        } else {
-                            Circle()
-                                .fill(Color.secondary.opacity(0.3))
-                                .frame(width: 6, height: 6)
-                        }
+                    // Unread indicator - only show for unread items
+                    if isUnread {
+                        Circle()
+                            .fill(Color.primary)
+                            .frame(width: 8, height: 8)
+                            .padding(.top, 4)
                     }
-                    .padding(.top, 4)
 
                     VStack(alignment: .leading, spacing: 8) {
                         // Title
                         if let title = nugget.title {
                             Text(title)
                                 .font(.subheadline)
-                                .fontWeight(.semibold)
+                                .fontWeight(isUnread ? .bold : .medium)
                                 .foregroundColor(.primary)
                                 .lineLimit(2)
                         }

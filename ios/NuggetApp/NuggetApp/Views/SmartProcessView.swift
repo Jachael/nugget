@@ -142,7 +142,7 @@ struct SmartProcessView: View {
                             Text("No content available")
                                 .font(.headline)
 
-                            Text("Add articles, videos, or links to your feed to start learning")
+                            Text("Add articles or links to your feed to start learning")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
@@ -199,7 +199,8 @@ struct SmartProcessView: View {
                 _ = try await NuggetService.shared.createSmartSession(query: query)
 
                 await MainActor.run {
-                    // Show success state
+                    // Show success state with haptic feedback
+                    HapticFeedback.success()
                     withAnimation(.easeInOut(duration: 0.3)) {
                         processingComplete = true
                         isProcessing = false

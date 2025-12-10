@@ -29,12 +29,8 @@ struct SessionView: View {
         let readyNuggets = currentSession.nuggets.filter { $0.isReady }
 
         for nugget in readyNuggets {
-            // Check if this is a grouped nugget with multiple sources
-            if let isGrouped = nugget.isGrouped, isGrouped,
-               let sourceUrls = nugget.sourceUrls,
-               let individualSummaries = nugget.individualSummaries,
-               sourceUrls.count > 1 {
-
+            // Check if this is a grouped nugget with individual summaries (digest)
+            if let individualSummaries = nugget.individualSummaries, !individualSummaries.isEmpty {
                 // Card 1: Overview showing the combined summary
                 result.append(CardData(
                     nuggetId: nugget.nuggetId,
@@ -160,21 +156,33 @@ struct SessionView: View {
     }
 
     private func completeSession() {
-        guard let sessionId = session.sessionId else {
-            dismiss()
-            return
-        }
-
         isCompleting = true
 
         Task {
             do {
-                _ = try await NuggetService.shared.completeSession(
-                    sessionId: sessionId,
-                    completedNuggetIds: completedNuggetIds
-                )
+                if let sessionId = session.sessionId {
+                    // Use the session-based completion
+                    _ = try await NuggetService.shared.completeSession(
+                        sessionId: sessionId,
+                        completedNuggetIds: completedNuggetIds
+                    )
+                } else if !completedNuggetIds.isEmpty {
+                    // No session ID - mark all completed nuggets as read directly
+                    try await NuggetService.shared.markNuggetsRead(nuggetIds: completedNuggetIds)
+                }
+
                 await MainActor.run {
+                    // Success haptic on session completion
+                    HapticFeedback.success()
+
+                    // Dismiss first, then notify to refresh after a short delay
+                    // This ensures the view hierarchy is stable
                     dismiss()
+
+                    // Notify HomeView to refresh nuggets after dismissal
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NotificationCenter.default.post(name: NSNotification.Name("RefreshNuggets"), object: nil)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -291,6 +299,7 @@ struct CardStackView: View {
 
     @State private var offset = CGSize.zero
     @State private var selectedArticle: ArticleToOpen?
+    @State private var verticalOffset: CGFloat = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -313,17 +322,22 @@ struct CardStackView: View {
                 // Top card (current)
                 if let currentCard = cards.first {
                     cardView(for: currentCard, geometry: geometry, showCloseButton: true)
-                        .offset(offset)
+                        .offset(x: offset.width, y: verticalOffset)
                         .rotationEffect(.degrees(Double(offset.width / 30)))
+                        .scaleEffect(verticalOffset > 0 ? max(0.9, 1 - verticalOffset / 1000) : 1)
+                        .opacity(verticalOffset > 0 ? max(0.5, 1 - verticalOffset / 400) : 1)
                         .contentShape(Rectangle())
                         .simultaneousGesture(
                             DragGesture(minimumDistance: 20)
                                 .onChanged { gesture in
-                                    // Only track horizontal movement if it's more significant than vertical
                                     let horizontalMovement = abs(gesture.translation.width)
                                     let verticalMovement = abs(gesture.translation.height)
 
-                                    if horizontalMovement > verticalMovement * 1.5 {
+                                    // Check if this is a downward swipe (positive height means down)
+                                    if verticalMovement > horizontalMovement * 1.5 && gesture.translation.height > 0 {
+                                        // Vertical swipe down - track for dismiss
+                                        verticalOffset = gesture.translation.height
+                                    } else if horizontalMovement > verticalMovement * 1.5 {
                                         // Horizontal swipe - allow card to move
                                         offset = CGSize(width: gesture.translation.width, height: 0)
                                     }
@@ -332,8 +346,13 @@ struct CardStackView: View {
                                     let horizontalMovement = abs(gesture.translation.width)
                                     let verticalMovement = abs(gesture.translation.height)
 
-                                    // Only trigger swipe if horizontal movement dominates
-                                    if horizontalMovement > verticalMovement * 1.5 && horizontalMovement > 120 {
+                                    // Check for swipe down to dismiss
+                                    if verticalMovement > horizontalMovement * 1.5 && gesture.translation.height > 150 {
+                                        // Swipe down - dismiss
+                                        handleSwipe(direction: .down)
+                                    }
+                                    // Only trigger horizontal swipe if horizontal movement dominates
+                                    else if horizontalMovement > verticalMovement * 1.5 && horizontalMovement > 120 {
                                         // Swipe left (negative width) = next card (like turning page forward)
                                         // Swipe right (positive width) = previous card (like turning page back)
                                         handleSwipe(direction: gesture.translation.width > 0 ? .right : .left)
@@ -341,6 +360,7 @@ struct CardStackView: View {
                                         // Reset card position
                                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                             offset = .zero
+                                            verticalOffset = 0
                                         }
                                     }
                                 }
@@ -386,6 +406,7 @@ struct CardStackView: View {
                 },
                 onClose: onClose
             )
+            .id("overview-\(card.nuggetId)") // Reset scroll position when card changes
 
         case .individualArticle(let summary, let index, let total):
             IndividualArticleCard(
@@ -394,6 +415,7 @@ struct CardStackView: View {
                 total: total,
                 geometry: geometry,
                 showCloseButton: showCloseButton,
+                nuggetId: card.nuggetId,
                 onOpenArticle: { url, title in
                     print("🔗 SessionView (Individual): Opening article - URL: \(url.absoluteString)")
                     print("🔗 SessionView (Individual): Title: \(title ?? "nil")")
@@ -402,6 +424,7 @@ struct CardStackView: View {
                 },
                 onClose: onClose
             )
+            .id("article-\(card.nuggetId)-\(index)") // Reset scroll position when card changes
         }
     }
 
@@ -441,28 +464,60 @@ struct CardStackView: View {
                     .opacity(Double(offset.width / 120))
                 }
             }
+            // Swipe down = EXIT
+            if verticalOffset > 50 {
+                VStack {
+                    VStack {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundStyle(.secondary)
+                        Text("EXIT")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.secondary)
+                    }
+                    .opacity(Double(verticalOffset / 150))
+                    Spacer()
+                }
+                .padding(.top, 60)
+            }
         }
     }
 
     private func handleSwipe(direction: SwipeDirection) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            offset = CGSize(width: direction == .right ? 1000 : -1000, height: 0)
-        }
+        // Haptic feedback for swipe actions
+        HapticFeedback.light()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            // Swipe left (like turning page forward) = next card
-            // Swipe right (like turning page back) = go back
-            if direction == .left {
-                onNext()
-            } else {
-                onBack()
+        if direction == .down {
+            // Swipe down - animate card off screen and dismiss
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                verticalOffset = 1000
             }
-            offset = .zero
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onClose()
+                verticalOffset = 0
+            }
+        } else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                offset = CGSize(width: direction == .right ? 1000 : -1000, height: 0)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                // Swipe left (like turning page forward) = next card
+                // Swipe right (like turning page back) = go back
+                if direction == .left {
+                    onNext()
+                } else {
+                    onBack()
+                }
+                offset = .zero
+            }
         }
     }
 
     enum SwipeDirection {
-        case left, right
+        case left, right, down
     }
 }
 
@@ -474,6 +529,11 @@ struct OverviewCard: View {
     let showCloseButton: Bool
     let onOpenArticle: (URL, String?) -> Void
     let onClose: () -> Void
+
+    @State private var isSharing = false
+    @State private var showShareSheet = false
+    @State private var shareUrl: URL?
+    @State private var showShareToFriends = false
 
     var sourceCount: Int {
         nugget.sourceUrls?.count ?? 1
@@ -501,6 +561,9 @@ struct OverviewCard: View {
             VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 28) {
+                        // Invisible anchor at top for scroll reset
+                        Color.clear.frame(height: 0).id("scrollTop-\(nugget.nuggetId)")
+
                         // Category badge
                         if let category = nugget.category {
                             HStack {
@@ -673,8 +736,102 @@ struct OverviewCard: View {
                 }
                 .padding(20)
             }
+
+            // Share buttons - fixed in bottom right corner
+            if showCloseButton {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Spacer()
+                        // Share to Friends button
+                        Button {
+                            showShareToFriends = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.2")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Friends")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(.ultraThinMaterial))
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+                        }
+
+                        // Share link button
+                        Button {
+                            shareNugget()
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSharing {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                Text("Share")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(.ultraThinMaterial))
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+                        }
+                        .disabled(isSharing)
+                    }
+                    .padding(20)
+                    .padding(.bottom, 30)
+                }
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareUrl {
+                ShareSheet(items: [url])
+            }
+        }
+        .sheet(isPresented: $showShareToFriends) {
+            ShareToFriendsSheet(nuggetId: nugget.nuggetId, nuggetTitle: nugget.title)
         }
     }
+
+    private func shareNugget() {
+        isSharing = true
+
+        Task {
+            do {
+                let response = try await NuggetService.shared.shareNugget(nuggetId: nugget.nuggetId)
+                await MainActor.run {
+                    isSharing = false
+                    if let url = URL(string: response.shareUrl) {
+                        shareUrl = url
+                        showShareSheet = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isSharing = false
+                    print("Error sharing nugget: \(error)")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Share Sheet
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Individual Article Card
@@ -685,8 +842,14 @@ struct IndividualArticleCard: View {
     let total: Int
     let geometry: GeometryProxy
     let showCloseButton: Bool
+    let nuggetId: String
     let onOpenArticle: (URL, String?) -> Void
     let onClose: () -> Void
+
+    @State private var isSharing = false
+    @State private var showShareSheet = false
+    @State private var shareUrl: URL?
+    @State private var showShareToFriends = false
 
     var urlHost: String {
         URL(string: summary.sourceUrl)?.host ?? summary.sourceUrl
@@ -843,6 +1006,89 @@ struct IndividualArticleCard: View {
                         .background(Circle().fill(.ultraThinMaterial))
                 }
                 .padding(20)
+            }
+
+            // Share buttons - fixed in bottom right corner
+            if showCloseButton {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Spacer()
+                        // Share to Friends button
+                        Button {
+                            showShareToFriends = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.2")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Friends")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(.ultraThinMaterial))
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+                        }
+
+                        // Share link button
+                        Button {
+                            shareNugget()
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSharing {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                Text("Share")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(.ultraThinMaterial))
+                            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+                        }
+                        .disabled(isSharing)
+                    }
+                    .padding(20)
+                    .padding(.bottom, 30)
+                }
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareUrl {
+                ShareSheet(items: [url])
+            }
+        }
+        .sheet(isPresented: $showShareToFriends) {
+            ShareToFriendsSheet(nuggetId: nuggetId, nuggetTitle: summary.title)
+        }
+    }
+
+    private func shareNugget() {
+        isSharing = true
+
+        Task {
+            do {
+                let response = try await NuggetService.shared.shareNugget(nuggetId: nuggetId)
+                await MainActor.run {
+                    isSharing = false
+                    if let url = URL(string: response.shareUrl) {
+                        shareUrl = url
+                        showShareSheet = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isSharing = false
+                    print("Error sharing nugget: \(error)")
+                }
             }
         }
     }

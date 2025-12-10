@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Primary Meta Tags -->
+    <title>Nugget Feedback - Feature Requests & Ideas</title>
+    <meta name="title" content="Nugget Feedback - Feature Requests & Ideas">
+    <meta name="description" content="Vote on feature requests and submit your ideas for Nugget. Help shape the future of AI-powered article summaries.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://nuggetdotcom.com/feedback.html">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://nuggetdotcom.com/feedback.html">
+    <meta property="og:title" content="Nugget Feedback - Feature Requests & Ideas">
+    <meta property="og:description" content="Vote on feature requests and submit your ideas for Nugget.">
+    <meta property="og:site_name" content="Nugget">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Nugget Feedback - Feature Requests & Ideas">
+    <meta name="twitter:description" content="Vote on feature requests and submit your ideas for Nugget.">
+
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #ffffff;
+            --text: #000000;
+            --text-secondary: #666666;
+            --border: #e5e5e5;
+            --card-bg: #f5f5f7;
+            --success: #22c55e;
+            --planned: #3b82f6;
+            --in-progress: #f59e0b;
+            --completed: #10b981;
+            --declined: #ef4444;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #000000;
+                --text: #ffffff;
+                --text-secondary: #999999;
+                --border: #333333;
+                --card-bg: #1c1c1e;
+            }
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .logo span {
+            font-weight: 400;
+        }
+
+        .submit-btn {
+            padding: 10px 20px;
+            background: var(--text);
+            color: var(--bg);
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .submit-btn:hover {
+            opacity: 0.9;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+        }
+
+        .filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover,
+        .filter-btn.active {
+            background: var(--text);
+            color: var(--bg);
+            border-color: var(--text);
+        }
+
+        .feedback-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .feedback-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            gap: 16px;
+        }
+
+        .vote-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 50px;
+        }
+
+        .vote-btn {
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            color: var(--text-secondary);
+            position: relative;
+        }
+
+        .vote-btn::before {
+            content: '\25B2';
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .vote-btn:hover {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+            transform: scale(1.05);
+        }
+
+        .vote-btn:active {
+            transform: scale(0.95);
+        }
+
+        .vote-btn.voted {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .vote-btn.voted:hover {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: white;
+        }
+
+        .vote-count {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .vote-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+
+        .feedback-content {
+            flex: 1;
+        }
+
+        .feedback-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .feedback-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-open {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .status-planned {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--planned);
+        }
+
+        .status-in-progress {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--in-progress);
+        }
+
+        .status-completed {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--completed);
+        }
+
+        .status-declined {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--declined);
+        }
+
+        .feedback-description {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .feedback-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .category-badge {
+            padding: 4px 8px;
+            background: var(--border);
+            border-radius: 6px;
+            font-size: 0.75rem;
+        }
+
+        /* Submit Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg);
+            border-radius: 20px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .modal h2 {
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--card-bg);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        .cancel-btn {
+            padding: 10px 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 600px) {
+            .feedback-card {
+                flex-direction: column;
+            }
+
+            .vote-section {
+                flex-direction: row;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/" class="logo">Nugget<span>✦</span></a>
+            <button class="submit-btn" onclick="openModal()">Submit Feedback</button>
+        </header>
+
+        <h1>Feature Requests</h1>
+        <p class="subtitle">Vote for features you'd like to see in Nugget</p>
+
+        <div class="filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="feature">Features</button>
+            <button class="filter-btn" data-filter="bug">Bugs</button>
+            <button class="filter-btn" data-filter="improvement">Improvements</button>
+        </div>
+
+        <div class="feedback-list" id="feedbackList">
+            <div class="loading">Loading feedback...</div>
+        </div>
+    </div>
+
+    <!-- Submit Modal -->
+    <div class="modal" id="submitModal">
+        <div class="modal-content">
+            <h2>Submit Feedback</h2>
+            <form id="feedbackForm">
+                <div class="form-group">
+                    <label>Category</label>
+                    <select name="category" required>
+                        <option value="feature">Feature Request</option>
+                        <option value="bug">Bug Report</option>
+                        <option value="improvement">Improvement</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" name="title" placeholder="Brief summary" required maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Describe your suggestion in detail" required maxlength="1000"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="submit-btn">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://1wk38vfbl2.execute-api.eu-west-1.amazonaws.com';
+        let currentFilter = 'all';
+        let authToken = null;
+
+        // Get token from URL or localStorage
+        function getAuthToken() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            if (token) {
+                localStorage.setItem('nugget_token', token);
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                return token;
+            }
+            return localStorage.getItem('nugget_token');
+        }
+
+        authToken = getAuthToken();
+
+        // Load feedback
+        async function loadFeedback() {
+            const list = document.getElementById('feedbackList');
+            list.innerHTML = '<div class="loading">Loading feedback...</div>';
+
+            try {
+                const url = currentFilter === 'all'
+                    ? `${API_BASE}/v1/feedback?sort=votes`
+                    : `${API_BASE}/v1/feedback?sort=votes&category=${currentFilter}`;
+
+                const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+                const response = await fetch(url, { headers });
+                const data = await response.json();
+
+                if (!data.feedback || data.feedback.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No feedback yet. Be the first to submit!</div>';
+                    return;
+                }
+
+                list.innerHTML = data.feedback.map(item => `
+                    <div class="feedback-card">
+                        <div class="vote-section">
+                            <button class="vote-btn ${item.hasVoted ? 'voted' : ''}" onclick="vote('${item.feedbackId}')">
+                                <span class="vote-count">${item.voteCount}</span>
+                                <span class="vote-label">votes</span>
+                            </button>
+                        </div>
+                        <div class="feedback-content">
+                            <div class="feedback-header">
+                                <span class="feedback-title">${escapeHtml(item.title)}</span>
+                                <span class="status-badge status-${item.status}">${item.status.replace('-', ' ')}</span>
+                            </div>
+                            <p class="feedback-description">${escapeHtml(item.description)}</p>
+                            <div class="feedback-meta">
+                                <span class="category-badge">${item.category}</span>
+                                <span>by ${item.userDisplayName || 'Anonymous'}</span>
+                                <span>${formatDate(item.createdAt)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                list.innerHTML = '<div class="empty-state">Failed to load feedback. Please try again.</div>';
+            }
+        }
+
+        // Vote
+        async function vote(feedbackId) {
+            if (!authToken) {
+                alert('Please open this page from the Nugget app to vote.');
+                return;
+            }
+
+            try {
+                await fetch(`${API_BASE}/v1/feedback/${feedbackId}/vote`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                loadFeedback();
+            } catch (error) {
+                alert('Failed to vote. Please try again.');
+            }
+        }
+
+        // Submit feedback
+        document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!authToken) {
+                alert('Please open this page from the Nugget app to submit feedback.');
+                return;
+            }
+
+            const form = e.target;
+            const data = {
+                title: form.title.value,
+                description: form.description.value,
+                category: form.category.value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/v1/feedback`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    closeModal();
+                    form.reset();
+                    loadFeedback();
+                } else {
+                    const err = await response.json();
+                    alert(err.error || 'Failed to submit feedback.');
+                }
+            } catch (error) {
+                alert('Failed to submit feedback. Please try again.');
+            }
+        });
+
+        // Filters
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter;
+                loadFeedback();
+            });
+        });
+
+        // Modal
+        function openModal() {
+            if (!authToken) {
+                alert('Please open this page from the Nugget app to submit feedback.');
+                return;
+            }
+            document.getElementById('submitModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('submitModal').classList.remove('active');
+        }
+
+        // Helpers
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        // Init
+        loadFeedback();
+    </script>
+</body>
+</html>

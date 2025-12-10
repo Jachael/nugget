@@ -80,6 +80,13 @@ struct InboxView: View {
     @State private var processingCheckTimer: Timer?
     @StateObject private var badgeManager = NuggetBadgeManager.shared
 
+    // Multi-select states
+    @State private var isEditMode = false
+    @State private var selectedNuggetIds: Set<String> = []
+    @State private var showClearAllConfirmation = false
+    @State private var showDeleteSelectedConfirmation = false
+    @State private var isDeleting = false
+
     var scrapedNuggets: [Nugget] {
         sortedFilteredNuggets.filter { $0.summary == nil }
     }
@@ -194,19 +201,41 @@ struct InboxView: View {
                                         }
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     } else {
-                                        List {
-                                            ForEach(filteredNuggets) { nugget in
-                                                NavigationLink(destination: NuggetDetailView(nugget: nugget)) {
-                                                    NuggetRowView(nugget: nugget)
+                                        VStack(spacing: 0) {
+                                            List {
+                                                ForEach(filteredNuggets) { nugget in
+                                                    if isEditMode {
+                                                        SelectableNuggetRow(
+                                                            nugget: nugget,
+                                                            isSelected: selectedNuggetIds.contains(nugget.nuggetId),
+                                                            onToggle: {
+                                                                if selectedNuggetIds.contains(nugget.nuggetId) {
+                                                                    selectedNuggetIds.remove(nugget.nuggetId)
+                                                                } else {
+                                                                    selectedNuggetIds.insert(nugget.nuggetId)
+                                                                }
+                                                            }
+                                                        )
+                                                        .listRowBackground(Color.clear)
+                                                    } else {
+                                                        NavigationLink(destination: NuggetDetailView(nugget: nugget)) {
+                                                            NuggetRowView(nugget: nugget)
+                                                        }
+                                                        .listRowBackground(Color.clear)
+                                                    }
                                                 }
-                                                .listRowBackground(Color.clear)
+                                                .onDelete(perform: isEditMode ? nil : deleteNuggets)
                                             }
-                                            .onDelete(perform: deleteNuggets)
-                                        }
-                                        .listStyle(.plain)
-                                        .scrollContentBackground(.hidden)
-                                        .refreshable {
-                                            await refreshNuggets()
+                                            .listStyle(.plain)
+                                            .scrollContentBackground(.hidden)
+                                            .refreshable {
+                                                await refreshNuggets()
+                                            }
+
+                                            // Bottom action bar when in edit mode
+                                            if isEditMode {
+                                                editModeBottomBar
+                                            }
                                         }
                                     }
                                 }
@@ -244,10 +273,60 @@ struct InboxView: View {
                 }
             }
             .navigationTitle("Feed \(SparkSymbol.spark)")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !nuggets.isEmpty {
+                        Menu {
+                            if isEditMode {
+                                Button {
+                                    withAnimation { isEditMode = false }
+                                    selectedNuggetIds.removeAll()
+                                } label: {
+                                    Label("Done", systemImage: "checkmark")
+                                }
+                            } else {
+                                Button {
+                                    withAnimation { isEditMode = true }
+                                } label: {
+                                    Label("Select Items", systemImage: "checkmark.circle")
+                                }
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                showClearAllConfirmation = true
+                            } label: {
+                                Label("Clear All", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: isEditMode ? "checkmark.circle.fill" : "ellipsis.circle")
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+            }
             .alert("Nuggets Processing", isPresented: $showProcessSuccess) {
                 Button("OK") { }
             } message: {
                 Text("Your nuggets are being processed. This may take a minute. Refresh to see the results.")
+            }
+            .alert("Clear All?", isPresented: $showClearAllConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Clear All", role: .destructive) {
+                    Task { await clearAllNuggets() }
+                }
+            } message: {
+                Text("This will permanently delete all \(nuggets.count) items from your feed. This cannot be undone.")
+            }
+            .alert("Delete Selected?", isPresented: $showDeleteSelectedConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete \(selectedNuggetIds.count)", role: .destructive) {
+                    Task { await deleteSelectedNuggets() }
+                }
+            } message: {
+                Text("Delete \(selectedNuggetIds.count) selected item\(selectedNuggetIds.count == 1 ? "" : "s")? This cannot be undone.")
             }
             .sheet(isPresented: $showingAddNugget) {
                 AddNuggetView { nugget in
@@ -278,6 +357,45 @@ struct InboxView: View {
                 processingCheckTimer = nil
             }
         }
+    }
+
+    private var editModeBottomBar: some View {
+        HStack(spacing: 16) {
+            Button {
+                if selectedNuggetIds.count == filteredNuggets.count {
+                    selectedNuggetIds.removeAll()
+                } else {
+                    selectedNuggetIds = Set(filteredNuggets.map { $0.nuggetId })
+                }
+            } label: {
+                Text(selectedNuggetIds.count == filteredNuggets.count ? "Deselect All" : "Select All")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+
+            Spacer()
+
+            if isDeleting {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+            } else {
+                Text("\(selectedNuggetIds.count) selected")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            Button {
+                showDeleteSelectedConfirmation = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.body)
+                    .foregroundColor(selectedNuggetIds.isEmpty ? .secondary : .red)
+            }
+            .disabled(selectedNuggetIds.isEmpty || isDeleting)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .glassEffect(in: .rect)
     }
 
     private var filterBar: some View {
@@ -516,6 +634,54 @@ struct InboxView: View {
                 } catch {
                     print("Failed to delete nugget: \(error)")
                 }
+            }
+        }
+    }
+
+    private func deleteSelectedNuggets() async {
+        guard !selectedNuggetIds.isEmpty else { return }
+
+        await MainActor.run { isDeleting = true }
+
+        do {
+            let deleted = try await NuggetService.shared.batchDeleteNuggets(nuggetIds: Array(selectedNuggetIds))
+            await MainActor.run {
+                withAnimation {
+                    nuggets.removeAll { selectedNuggetIds.contains($0.nuggetId) }
+                    selectedNuggetIds.removeAll()
+                    isEditMode = false
+                    isDeleting = false
+                }
+                HapticFeedback.success()
+            }
+            print("Deleted \(deleted) nuggets")
+        } catch {
+            await MainActor.run {
+                isDeleting = false
+                errorMessage = "Failed to delete: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func clearAllNuggets() async {
+        await MainActor.run { isDeleting = true }
+
+        do {
+            let deleted = try await NuggetService.shared.deleteAllNuggets()
+            await MainActor.run {
+                withAnimation {
+                    nuggets.removeAll()
+                    selectedNuggetIds.removeAll()
+                    isEditMode = false
+                    isDeleting = false
+                }
+                HapticFeedback.success()
+            }
+            print("Cleared \(deleted) nuggets")
+        } catch {
+            await MainActor.run {
+                isDeleting = false
+                errorMessage = "Failed to clear: \(error.localizedDescription)"
             }
         }
     }
@@ -780,63 +946,139 @@ struct NuggetRowView: View {
     }
 }
 
+// MARK: - Selectable Nugget Row
+struct SelectableNuggetRow: View {
+    let nugget: Nugget
+    let isSelected: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 12) {
+                // Selection indicator
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .primary : .secondary)
+
+                // Nugget content
+                VStack(alignment: .leading, spacing: 4) {
+                    if let title = nugget.title {
+                        Text(title)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
+                    } else {
+                        Text(nugget.sourceUrl)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    if let category = nugget.category {
+                        Text(category.capitalized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(HapticPlainButtonStyle())
+    }
+}
+
 struct ProcessBanner: View {
     let count: Int
     let isProcessing: Bool
     let canProcess: Bool
     let onProcess: () -> Void
+    @EnvironmentObject var authService: AuthService
+    @AppStorage("autoProcessingSchedule") private var autoProcessingSchedule: String = ""
+
+    private var isPremium: Bool {
+        let tier = authService.currentUser?.subscriptionTier ?? "free"
+        return tier == "pro" || tier == "ultimate"
+    }
+
+    private var hasAutoProcessing: Bool {
+        !autoProcessingSchedule.isEmpty
+    }
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(count) nugget\(count == 1 ? "" : "s") ready to process")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                if !canProcess {
-                    Text("Add at least 2 items to process")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("Uses AI to create learning nuggets")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Group {
-                if canProcess && !isProcessing {
-                    Button {
-                        onProcess()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
-                                .font(.caption)
-                            Text("Process")
-                                .fontWeight(.semibold)
-                        }
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(count) nugget\(count == 1 ? "" : "s") ready to process")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    if !canProcess {
+                        Text("Add at least 2 items to process")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Uses AI to create learning nuggets")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                    .buttonStyle(GlassProminentButtonStyle())
-                } else {
-                    Button {
-                        onProcess()
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isProcessing {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle())
-                                    .scaleEffect(0.8)
-                            } else {
+                }
+
+                Spacer()
+
+                Group {
+                    if canProcess && !isProcessing {
+                        Button {
+                            onProcess()
+                        } label: {
+                            HStack(spacing: 6) {
                                 Image(systemName: "sparkles")
                                     .font(.caption)
                                 Text("Process")
                                     .fontWeight(.semibold)
                             }
                         }
+                        .buttonStyle(GlassProminentButtonStyle())
+                    } else {
+                        Button {
+                            onProcess()
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isProcessing {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle())
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "sparkles")
+                                        .font(.caption)
+                                    Text("Process")
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                        }
+                        .disabled(true)
+                        .buttonStyle(GlassButtonStyle())
                     }
-                    .disabled(true)
-                    .buttonStyle(GlassButtonStyle())
+                }
+            }
+
+            // Smart Processing prompt for premium users without auto-processing
+            if isPremium && !hasAutoProcessing && canProcess {
+                NavigationLink {
+                    AutoProcessingSettingsView()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.caption)
+                        Text("Set up Smart Processing to automate this")
+                            .font(.caption)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.secondary)
                 }
             }
         }
@@ -895,10 +1137,6 @@ struct AddNuggetView: View {
             return "tweet"
         }
 
-        if urlLower.contains("youtube.com/") || urlLower.contains("youtu.be/") {
-            return "youtube"
-        }
-
         return "url"
     }
 
@@ -909,8 +1147,6 @@ struct AddNuggetView: View {
             return "link.circle.fill"
         case "tweet":
             return "at.circle.fill"
-        case "youtube":
-            return "play.rectangle.fill"
         default:
             return "globe"
         }

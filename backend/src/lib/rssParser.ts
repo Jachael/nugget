@@ -2,6 +2,49 @@ import Parser from 'rss-parser';
 import { FeedItem, ParsedFeed, RecapNugget } from './models';
 import { summarizeFeedItems } from './llm';
 
+/**
+ * Decode HTML entities in a string
+ * Handles common entities like &amp;, &lt;, &gt;, &quot;, &#39;, and numeric entities
+ */
+function decodeHtmlEntities(str: string | undefined): string {
+  if (!str) return '';
+
+  return str
+    // Named entities
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&ndash;/g, '\u2013')
+    .replace(/&lsquo;/g, '\u2018')
+    .replace(/&rsquo;/g, '\u2019')
+    .replace(/&ldquo;/g, '\u201C')
+    .replace(/&rdquo;/g, '\u201D')
+    .replace(/&hellip;/g, '\u2026')
+    .replace(/&copy;/g, '\u00A9')
+    .replace(/&reg;/g, '\u00AE')
+    .replace(/&trade;/g, '\u2122')
+    // Numeric entities (decimal)
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+    // Numeric entities (hex)
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+/**
+ * Clean and normalize a URL (decode encoded ampersands, etc.)
+ */
+function cleanUrl(url: string | undefined): string {
+  if (!url) return '';
+  return url
+    .replace(/&amp;/g, '&')
+    .replace(/&#38;/g, '&')
+    .trim();
+}
+
 const parser = new Parser({
   timeout: 10000,
   headers: {
@@ -17,13 +60,13 @@ export async function parseFeed(feedUrl: string, feedId: string, feedName: strin
     const feed = await parser.parseURL(feedUrl);
 
     const items: FeedItem[] = feed.items.map(item => ({
-      title: item.title || 'Untitled',
-      link: item.link || '',
+      title: decodeHtmlEntities(item.title) || 'Untitled',
+      link: cleanUrl(item.link) || '',
       pubDate: item.pubDate,
-      content: item.content,
-      contentSnippet: item.contentSnippet,
-      creator: item.creator,
-      categories: item.categories,
+      content: decodeHtmlEntities(item.content),
+      contentSnippet: decodeHtmlEntities(item.contentSnippet),
+      creator: decodeHtmlEntities(item.creator),
+      categories: item.categories?.map(cat => decodeHtmlEntities(cat)),
       isoDate: item.isoDate,
       guid: item.guid
     }));
@@ -64,11 +107,11 @@ export async function createRecapNugget(
   // Take top 5-10 items for the recap
   const itemsToSummarize = feedItems.slice(0, Math.min(10, feedItems.length));
 
-  // Format articles for AI summarization
+  // Format articles for AI summarization (items should already be decoded, but double-check)
   const articles = itemsToSummarize.map(item => ({
-    title: item.title,
-    link: item.link,
-    snippet: item.contentSnippet || item.content?.substring(0, 200) || 'No description available'
+    title: decodeHtmlEntities(item.title),
+    link: cleanUrl(item.link),
+    snippet: decodeHtmlEntities(item.contentSnippet) || decodeHtmlEntities(item.content?.substring(0, 200)) || 'No description available'
   }));
 
   // Use AI to create a summary of these articles

@@ -200,6 +200,149 @@ Respond ONLY with valid JSON in exactly this format (no other text):
 /**
  * Summarize multiple RSS feed items into a cohesive recap
  */
+interface ScrapedArticle {
+  title: string;
+  link: string;
+  content: string;  // Full scraped content
+}
+
+interface IndividualArticleSummary {
+  title: string;
+  summary: string;
+  keyPoints: string[];
+  sourceUrl: string;
+}
+
+interface FeedSummarisationResult extends LLMSummarisationResult {
+  individualSummaries: IndividualArticleSummary[];
+}
+
+/**
+ * Summarize RSS feed articles with full AI processing for each article
+ * Returns overall summary + individual article summaries with key points
+ */
+export async function summarizeFeedWithArticles(
+  articles: ScrapedArticle[],
+  feedName: string
+): Promise<FeedSummarisationResult> {
+  if (articles.length === 0) {
+    throw new Error('No articles provided to summarize');
+  }
+
+  // Format articles with full content for the prompt
+  const articlesText = articles.map((article, index) => {
+    // Truncate content to ~1000 chars per article to stay within token limits
+    const truncatedContent = article.content.length > 1000
+      ? article.content.substring(0, 1000) + '...'
+      : article.content;
+    return `--- Article ${index + 1} ---
+Title: ${article.title}
+URL: ${article.link}
+Content:
+${truncatedContent}`;
+  }).join('\n\n');
+
+  const prompt = `You are analyzing ${articles.length} articles from "${feedName}".
+
+For EACH article, provide:
+1. A clear, concise title (max 80 chars)
+2. A 2-3 sentence summary
+3. 3-5 key learning points
+
+Also provide an overall digest summary.
+
+Articles:
+${articlesText}
+
+Respond ONLY with valid JSON in exactly this format (no other text):
+{
+  "title": "Today's ${feedName} Digest",
+  "summary": "2-3 sentence overview of the main themes across all articles",
+  "keyPoints": ["Overall theme 1", "Overall theme 2", "Overall theme 3"],
+  "question": "Thoughtful reflection question about these stories?",
+  "individualSummaries": [
+    {
+      "title": "Clear title for article 1",
+      "summary": "2-3 sentence summary of article 1",
+      "keyPoints": ["Key point 1", "Key point 2", "Key point 3"],
+      "sourceUrl": "${articles[0]?.link || 'url'}"
+    }
+  ]
+}
+
+IMPORTANT: Include an entry in individualSummaries for EACH of the ${articles.length} articles, in the same order they appear above.`;
+
+  const payload = {
+    anthropic_version: 'bedrock-2023-05-31',
+    max_tokens: 4000,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+  };
+
+  try {
+    const command = new InvokeModelCommand({
+      modelId: MODEL_ID,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(payload),
+    });
+
+    const response = await client.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+
+    let textContent = responseBody.content[0].text;
+    console.log('Claude feed with articles response:', textContent.substring(0, 500) + '...');
+
+    textContent = textContent.trim();
+    if (textContent.startsWith('```')) {
+      textContent = textContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    }
+
+    const result = JSON.parse(textContent);
+
+    if (!result.title || !result.summary || !Array.isArray(result.keyPoints) ||
+        !result.question || !Array.isArray(result.individualSummaries)) {
+      throw new Error('Invalid response structure from LLM');
+    }
+
+    // Ensure each individual summary has the correct sourceUrl from our input
+    const individualSummaries = result.individualSummaries.map((summary: IndividualArticleSummary, index: number) => ({
+      ...summary,
+      sourceUrl: articles[index]?.link || summary.sourceUrl,
+    }));
+
+    return {
+      title: result.title,
+      summary: result.summary,
+      keyPoints: result.keyPoints,
+      question: result.question,
+      individualSummaries,
+    };
+  } catch (error) {
+    console.error('Error calling Bedrock for feed with articles summarization:', error);
+
+    // Fallback: create basic summaries from scraped content
+    const individualSummaries = articles.map(article => ({
+      title: article.title,
+      summary: article.content.substring(0, 200) + '...',
+      keyPoints: ['Review this article for details'],
+      sourceUrl: article.link,
+    }));
+
+    return {
+      title: `Latest from ${feedName}`,
+      summary: `${articles.length} new articles available to read`,
+      keyPoints: articles.slice(0, 3).map(a => a.title),
+      question: 'What insights can you gain from these stories?',
+      individualSummaries,
+    };
+  }
+}
+
 export async function summarizeFeedItems(
   articles: FeedArticle[],
   feedName: string

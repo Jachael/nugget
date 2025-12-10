@@ -6,6 +6,10 @@ struct StatsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var nuggets: [Nugget] = []
     @State private var isLoading = true
+    @State private var friends: [Friend] = []
+    @State private var friendCode: String = ""
+    @State private var showAddFriend = false
+    @State private var showFriendsView = false
 
     private func getUserLevel(streak: Int) -> String {
         switch streak {
@@ -79,6 +83,9 @@ struct StatsView: View {
                     // Header with streak
                     streakHeader
 
+                    // Friends section
+                    friendsSection
+
                     // Main stats grid
                     statsGrid
 
@@ -120,6 +127,152 @@ struct StatsView: View {
         }
         .task {
             await loadNuggets()
+            await loadFriends()
+        }
+        .sheet(isPresented: $showFriendsView) {
+            FriendsView()
+        }
+    }
+
+    private var friendsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Friends")
+                    .font(.headline)
+
+                Spacer()
+
+                Button {
+                    showFriendsView = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Manage")
+                            .font(.subheadline.weight(.medium))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(.secondary)
+                }
+            }
+
+            if friends.isEmpty {
+                // Empty state
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary.opacity(0.5))
+
+                    Text("No friends yet")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    Button {
+                        showFriendsView = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.badge.plus")
+                            Text("Add Friends")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .glassEffect(in: .capsule)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else {
+                // Friends list
+                VStack(spacing: 12) {
+                    ForEach(friends.prefix(3)) { friend in
+                        HStack(spacing: 12) {
+                            // Avatar circle
+                            Circle()
+                                .fill(Color.secondary.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                                .overlay(
+                                    Text(String(friend.displayName.prefix(1)).uppercased())
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.secondary)
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(friend.displayName)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(.primary)
+
+                                if let code = friend.friendCode {
+                                    Text(code)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Spacer()
+                        }
+                    }
+
+                    if friends.count > 3 {
+                        Button {
+                            showFriendsView = true
+                        } label: {
+                            Text("See all \(friends.count) friends")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+
+            // My friend code
+            if !friendCode.isEmpty {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Your Friend Code")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Text(friendCode)
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        UIPasteboard.general.string = friendCode
+                        HapticFeedback.light()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 16))
+                            .foregroundColor(.secondary)
+                            .padding(10)
+                            .glassEffect(in: .circle)
+                    }
+
+                    ShareLink(item: "Add me on Nugget! My friend code is: \(friendCode)") {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16))
+                            .foregroundColor(.secondary)
+                            .padding(10)
+                            .glassEffect(in: .circle)
+                    }
+                }
+                .padding()
+                .glassEffect(in: .rect(cornerRadius: 12))
+            }
+        }
+        .padding()
+        .glassEffect(in: .rect(cornerRadius: 20))
+    }
+
+    private func loadFriends() async {
+        do {
+            friends = try await FriendsService.shared.listFriends()
+            friendCode = try await FriendsService.shared.getFriendCode()
+        } catch {
+            print("Failed to load friends: \(error)")
         }
     }
 

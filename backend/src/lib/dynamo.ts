@@ -6,6 +6,7 @@ import {
   QueryCommand,
   UpdateCommand,
   DeleteCommand,
+  BatchWriteCommand,
   QueryCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 
@@ -19,6 +20,9 @@ export const TableNames = {
   schedules: process.env.NUGGET_SCHEDULES_TABLE!,
   deviceTokens: process.env.NUGGET_DEVICE_TOKENS_TABLE!,
   feeds: process.env.NUGGET_FEEDS_TABLE!,
+  fetchedArticles: process.env.NUGGET_FETCHED_ARTICLES_TABLE!,
+  customDigests: process.env.NUGGET_CUSTOM_DIGESTS_TABLE!,
+  friendSharedNuggets: process.env.NUGGET_FRIEND_SHARED_NUGGETS_TABLE!,
 };
 
 export async function getItem<T>(tableName: string, key: Record<string, unknown>): Promise<T | null> {
@@ -69,6 +73,34 @@ export async function deleteItem(tableName: string, key: Record<string, unknown>
     TableName: tableName,
     Key: key,
   }));
+}
+
+/**
+ * Batch delete items from a table
+ * DynamoDB BatchWriteItem has a limit of 25 items per call
+ */
+export async function batchDeleteItems(
+  tableName: string,
+  keys: Record<string, unknown>[]
+): Promise<void> {
+  // DynamoDB BatchWriteItem limit is 25 items
+  const BATCH_SIZE = 25;
+
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    const batch = keys.slice(i, i + BATCH_SIZE);
+
+    const deleteRequests = batch.map(key => ({
+      DeleteRequest: {
+        Key: key,
+      },
+    }));
+
+    await dynamoDb.send(new BatchWriteCommand({
+      RequestItems: {
+        [tableName]: deleteRequests,
+      },
+    }));
+  }
 }
 
 /**

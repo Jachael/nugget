@@ -1,8 +1,9 @@
 import { Handler } from 'aws-lambda';
 import { getItem, updateItem, putItem, TableNames } from '../lib/dynamo';
-import { Nugget } from '../lib/models';
+import { Nugget, User } from '../lib/models';
 import { summariseContent, summariseGroupedContent } from '../lib/llm';
 import { computePriorityScore } from '../lib/priority';
+import { sendNuggetsReadyNotification } from '../lib/notifications';
 import { v4 as uuidv4 } from 'uuid';
 
 interface SummariseNuggetEvent {
@@ -13,11 +14,12 @@ interface SummariseNuggetEvent {
   groupedNuggetId?: string; // ID of the existing grouped nugget to update
   groupAfterSummarize?: boolean;
   groupNuggetIds?: string[];
+  category?: string; // Category for the grouped nugget (from smart grouping)
 }
 
 export const handler: Handler<SummariseNuggetEvent> = async (event) => {
   try {
-    const { userId, nuggetId, nuggetIds, grouped, groupedNuggetId, groupAfterSummarize, groupNuggetIds } = event;
+    const { userId, nuggetId, nuggetIds, grouped, groupedNuggetId, groupAfterSummarize, groupNuggetIds, category } = event;
 
     if (!userId || (!nuggetId && !nuggetIds)) {
       console.error('Missing userId or nuggetId/nuggetIds in event');
@@ -56,9 +58,11 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
       const newPriorityScore = computePriorityScore(now, 0);
 
       // First, summarize each individual nugget if not already done
+      // IMPORTANT: Do NOT mark them as 'ready' - keep them as 'processing' so they stay hidden
+      // They will be archived after the grouped nugget is created
       console.log(`Summarizing ${nuggets.length} individual nuggets first...`);
       for (const nugget of nuggets) {
-        if (!nugget.summary || nugget.processingState !== 'ready') {
+        if (!nugget.summary) {
           console.log(`Summarizing nugget: ${nugget.nuggetId}`);
           const summaryResult = await summariseContent(
             nugget.rawTitle,
@@ -66,16 +70,7 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
             nugget.sourceUrl
           );
 
-          // Update the nugget with its summary
-          await updateItem(TableNames.nuggets, { userId, nuggetId: nugget.nuggetId }, {
-            rawTitle: summaryResult.title,
-            summary: summaryResult.summary,
-            keyPoints: summaryResult.keyPoints,
-            question: summaryResult.question,
-            processingState: 'ready',
-          });
-
-          // Update local copy for grouping
+          // Update local copy for grouping (but DON'T update DB with 'ready' state - keep them hidden)
           nugget.rawTitle = summaryResult.title;
           nugget.summary = summaryResult.summary;
           nugget.keyPoints = summaryResult.keyPoints;
@@ -107,7 +102,7 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
         question: result.question,
         status: 'inbox',
         processingState: 'ready',
-        category: nuggets[0].category,
+        category: category || nuggets[0].category, // Use passed category from smart grouping, fallback to first nugget's category
         priorityScore: newPriorityScore,
         createdAt: now,
         timesReviewed: 0,
@@ -145,6 +140,19 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
       }
 
       console.log(`Successfully created grouped nugget: ${finalGroupedNuggetId}`);
+
+      // Send push notification that nuggets are ready
+      try {
+        const user = await getItem<User>(TableNames.users, { userId });
+        if (user?.settings?.notificationsEnabled !== false) {
+          await sendNuggetsReadyNotification(userId, 1); // 1 grouped nugget ready
+          console.log(`Sent push notification to user ${userId}`);
+        }
+      } catch (notifError) {
+        console.error('Failed to send push notification:', notifError);
+        // Don't fail the whole operation for notification failure
+      }
+
       return { success: true, groupedNuggetId: finalGroupedNuggetId };
     }
 
@@ -193,6 +201,19 @@ export const handler: Handler<SummariseNuggetEvent> = async (event) => {
     });
 
     console.log(`Successfully summarised nugget: ${singleNuggetId}`);
+
+    // Send push notification that nugget is ready (only for non-grouped nuggets that won't be grouped later)
+    if (!groupAfterSummarize) {
+      try {
+        const user = await getItem<User>(TableNames.users, { userId });
+        if (user?.settings?.notificationsEnabled !== false) {
+          await sendNuggetsReadyNotification(userId, 1);
+          console.log(`Sent push notification to user ${userId}`);
+        }
+      } catch (notifError) {
+        console.error('Failed to send push notification:', notifError);
+      }
+    }
 
     // Check if we need to trigger grouping after this summarization
     if (groupAfterSummarize && groupNuggetIds && groupNuggetIds.length > 1) {

@@ -1,7 +1,7 @@
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { v4 as uuidv4 } from 'uuid';
-import { getItem, queryItems, putItem, updateItem, TableNames } from '../lib/dynamo';
+import { getItem, queryItems, updateItem, TableNames } from '../lib/dynamo';
 import { User, Nugget, ProcessingSchedule, DeviceToken } from '../lib/models';
 import { createProcessingBatches } from '../lib/smartGrouping';
 
@@ -117,47 +117,22 @@ export async function handler(event: AutoProcessEvent): Promise<void> {
       if (batch.length === 0) continue;
 
       if (batch.length >= 2) {
-        // Create grouped nugget for batch processing
-        const now = Date.now() / 1000;
+        // DON'T create a placeholder nugget - let AI processing create the final nugget when ready
         const groupedNuggetId = `group-${uuidv4()}`;
+        groupedNuggetIds.push(groupedNuggetId);
 
-        // Detect dominant category
+        // Detect category for this batch (used by smart grouping)
         const categoryCount: Record<string, number> = {};
         batch.forEach(n => {
           if (n.category) {
             categoryCount[n.category] = (categoryCount[n.category] || 0) + 1;
           }
         });
-        const dominantCategory = Object.keys(categoryCount).length > 0
+        const batchCategory = Object.keys(categoryCount).length > 0
           ? Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0][0]
           : 'mixed';
 
-        // Create grouped nugget
-        const groupedNugget: Nugget = {
-          userId,
-          nuggetId: groupedNuggetId,
-          sourceUrl: batch[0].sourceUrl,
-          sourceType: 'other',
-          title: `Processing ${batch.length} articles...`,
-          rawTitle: `Processing ${batch.length} articles...`,
-          category: dominantCategory,
-          status: 'inbox',
-          createdAt: now,
-          priorityScore: 100,
-          timesReviewed: 0,
-          processingState: 'processing',
-          isGrouped: true,
-          sourceUrls: batch.map(n => n.sourceUrl),
-          sourceNuggetIds: batch.map(n => n.nuggetId),
-          summary: 'AI is analyzing and summarizing your articles...',
-          keyPoints: ['Processing in progress'],
-          question: 'Processing...',
-        };
-
-        await putItem(TableNames.nuggets, groupedNugget);
-        groupedNuggetIds.push(groupedNuggetId);
-
-        // Trigger AI processing
+        // Trigger AI processing - it will create the nugget when ready
         try {
           await lambda.send(new InvokeCommand({
             FunctionName: functionName,
@@ -167,9 +142,10 @@ export async function handler(event: AutoProcessEvent): Promise<void> {
               nuggetIds: batch.map(n => n.nuggetId),
               grouped: true,
               groupedNuggetId,
+              category: batchCategory,
             })),
           }));
-          console.log(`Invoked AI processing for grouped nugget ${groupedNuggetId} with ${batch.length} articles`);
+          console.log(`Invoked AI processing for grouped nugget ${groupedNuggetId} with ${batch.length} articles (category: ${batchCategory})`);
           processedCount += batch.length;
         } catch (err) {
           console.error('Error invoking AI processing:', err);
@@ -193,11 +169,12 @@ export async function handler(event: AutoProcessEvent): Promise<void> {
 
     // Update schedule's last run and next run time
     const now = Math.floor(Date.now() / 1000);
-    const nextRun = calculateNextRun(schedule.frequency, schedule.preferredTime, schedule.timezone);
+    const nextRunTimestamp = calculateNextRun(schedule.frequency, schedule.preferredTime, schedule.timezone);
+    const nextRun = new Date(nextRunTimestamp * 1000).toISOString();
 
     await updateItem(scheduleTableName, { userId, scheduleId: schedule.scheduleId }, {
       lastRun: now,
-      nextRun,
+      nextRun,  // Store as ISO string to match model
       updatedAt: now,
     });
 
@@ -257,8 +234,9 @@ function calculateNextRun(frequency: string, preferredTime: string, _timezone: s
  */
 async function sendProcessingNotification(userId: string, count: number): Promise<void> {
   // Check if user has push notifications enabled in settings
+  // Default to true if not explicitly set to false
   const user = await getItem<User>(TableNames.users, { userId });
-  if (!user?.settings?.notificationsEnabled) {
+  if (user?.settings?.notificationsEnabled === false) {
     console.log(`Notifications disabled for user ${userId}`);
     return;
   }

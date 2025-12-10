@@ -6,14 +6,13 @@ struct ContentTile: Identifiable {
     let subtitle: String
     let icon: String
     let color: Color
-    let filter: TileFilter
+    let tileType: TileType
 }
 
-enum TileFilter {
-    case thisWeek
-    case today
-    case yesterday
-    case category(String)
+enum TileType: Equatable {
+    case catchUp              // All unread nuggets (non-digests)
+    case category(String)     // Topic-specific unread nuggets
+    case digests              // Unread digest nuggets (grouped)
 }
 
 struct HomeView: View {
@@ -24,22 +23,30 @@ struct HomeView: View {
     @State private var session: Session?
     @State private var errorMessage: String?
     @State private var greeting: String = ""
-    @State private var showTestWebView = false
     @State private var showStats = false
+    @State private var streakBounce = false
     @State private var errorTimer: Timer?
-    @State private var showSmartProcess = false
+    @State private var showCatchUp = false
     @State private var lastLoadTime = Date.distantPast
     @State private var refreshTask: Task<Void, Never>?
     @State private var showSubscription = false
-    @AppStorage("upgradeTileDismissed") private var upgradeTileDismissed = false
+    @State private var selectedNuggetSession: Session?
+    @State private var showRSSFeeds = false
+    @State private var showCustomDigests = false
+    @State private var showSharedWithMe = false
+    @State private var shareToFriendsNugget: Nugget?
 
     private var isPremium: Bool {
         let tier = authService.currentUser?.subscriptionTier ?? "free"
         return tier == "pro" || tier == "ultimate"
     }
 
-    private var shouldShowUpgradeTile: Bool {
-        !isPremium && !upgradeTileDismissed
+    private var isUltimate: Bool {
+        authService.currentUser?.subscriptionTier == "ultimate"
+    }
+
+    private var currentTier: String {
+        authService.currentUser?.subscriptionTier ?? "free"
     }
 
     var username: String {
@@ -53,6 +60,35 @@ struct HomeView: View {
         nuggets.filter { $0.summary == nil && $0.isReady }.count
     }
 
+    // Unread digests (RSS feed content with status='digest')
+    var unreadDigests: [Nugget] {
+        nuggets.filter { nugget in
+            nugget.summary != nil &&
+            nugget.isReady &&
+            nugget.timesReviewed == 0 &&
+            (nugget.status == "digest" || // New digest status
+             (nugget.status == "inbox" && (nugget.isGrouped == true || nugget.individualSummaries != nil))) // Legacy support
+        }
+    }
+
+    // Yesterday's unprocessed count
+    var yesterdayUnprocessedCount: Int {
+        nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil && $0.isReady }.count
+    }
+
+    // Available categories from unprocessed content
+    var availableCategories: [String] {
+        let categories = nuggets
+            .filter { $0.summary == nil && $0.isReady }
+            .compactMap { $0.category }
+
+        let counts = Dictionary(grouping: categories, by: { $0 })
+            .mapValues { $0.count }
+            .sorted { $0.value > $1.value }
+
+        return counts.map { $0.key }
+    }
+
     var timeBasedGreeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         if hour < 12 {
@@ -64,63 +100,91 @@ struct HomeView: View {
         }
     }
 
+    // Unread processed nuggets count
+    var unreadNuggetsCount: Int {
+        nuggets.filter { $0.summary != nil && $0.isReady && $0.timesReviewed == 0 && $0.status == "inbox" }.count
+    }
+
+    // Unread nuggets by category (excluding digests - they have their own tile)
+    var unreadByCategory: [String: Int] {
+        let unread = nuggets.filter {
+            $0.summary != nil &&
+            $0.isReady &&
+            $0.timesReviewed == 0 &&
+            $0.status == "inbox" &&
+            $0.isGrouped != true &&
+            $0.individualSummaries == nil
+        }
+        return Dictionary(grouping: unread, by: { $0.category ?? "general" })
+            .mapValues { $0.count }
+    }
+
     var tiles: [ContentTile] {
         var result: [ContentTile] = []
 
-        // This week tile
-        let thisWeekCount = nuggets.filter { nugget in
-            guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else { return false }
-            return nugget.createdAt >= weekAgo && nugget.summary == nil && nugget.isReady
-        }.count
+        // Priority 1: Content tiles - show unread content first
 
-        if thisWeekCount > 0 {
+        // Catch Up tile - all unread nuggets (non-digests)
+        let nonDigestUnread = nuggets.filter {
+            $0.summary != nil &&
+            $0.isReady &&
+            $0.timesReviewed == 0 &&
+            $0.status == "inbox" &&
+            $0.isGrouped != true &&
+            $0.individualSummaries == nil
+        }
+        if !nonDigestUnread.isEmpty {
             result.append(ContentTile(
-                title: "This Week",
-                subtitle: "\(thisWeekCount) nuggets",
-                icon: "calendar.badge.clock",
-                color: .secondary,
-                filter: .thisWeek
+                title: "Catch Up",
+                subtitle: "\(nonDigestUnread.count) unread",
+                icon: "sparkles",
+                color: .purple,
+                tileType: .catchUp
             ))
         }
 
-        // Today tile
-        let todayCount = nuggets.filter { Calendar.current.isDateInToday($0.createdAt) && $0.summary == nil && $0.isReady }.count
-        if todayCount > 0 {
+        // Digests tile - unread grouped/digest nuggets
+        if !unreadDigests.isEmpty {
             result.append(ContentTile(
-                title: "Today",
-                subtitle: "\(todayCount) nuggets",
-                icon: "sun.max.fill",
-                color: .secondary,
-                filter: .today
+                title: "Digests",
+                subtitle: "\(unreadDigests.count) unread",
+                icon: "square.stack.3d.up",
+                color: .indigo,
+                tileType: .digests
             ))
         }
 
-        // Yesterday tile
-        let yesterdayCount = nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil && $0.isReady }.count
-        if yesterdayCount > 0 {
-            result.append(ContentTile(
-                title: "Yesterday",
-                subtitle: "\(yesterdayCount) nuggets",
-                icon: "moon.stars.fill",
-                color: .secondary,
-                filter: .yesterday
-            ))
-        }
+        // Topic tiles - categories with unread content
+        let categoryIcons: [String: String] = [
+            "tech": "desktopcomputer",
+            "technology": "desktopcomputer",
+            "sport": "sportscourt",
+            "sports": "sportscourt",
+            "business": "briefcase",
+            "finance": "chart.line.uptrend.xyaxis",
+            "health": "heart",
+            "science": "atom",
+            "news": "newspaper",
+            "entertainment": "play.tv",
+            "career": "person.crop.square"
+        ]
 
-        // Category tiles - get top categories
-        let categories = Dictionary(grouping: nuggets.filter { $0.summary == nil && $0.isReady }, by: { $0.category ?? "general" })
-        let topCategories = categories.sorted { $0.value.count > $1.value.count }.prefix(3)
+        let sortedCategories = unreadByCategory
+            .filter { $0.value > 0 }
+            .sorted { $0.value > $1.value }
+            .prefix(2) // Limit to 2 categories to leave room for other tiles
 
-        for (category, items) in topCategories {
-            let color: Color = .secondary
-
-            result.append(ContentTile(
-                title: category.capitalized,
-                subtitle: "\(items.count) nuggets",
-                icon: "tag.fill",
-                color: color,
-                filter: .category(category)
-            ))
+        for (category, count) in sortedCategories {
+            if result.count < 4 {
+                let icon = categoryIcons[category.lowercased()] ?? "tag"
+                result.append(ContentTile(
+                    title: category.capitalized,
+                    subtitle: "\(count) unread",
+                    icon: icon,
+                    color: .blue,
+                    tileType: .category(category)
+                ))
+            }
         }
 
         return result
@@ -146,7 +210,7 @@ struct HomeView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         // Spacer for fixed header area
-                        Color.clear.frame(height: shouldShowUpgradeTile ? 240 : 120)
+                        Color.clear.frame(height: 140)
 
                     // Error message with auto-dismiss
                     if let error = errorMessage {
@@ -187,7 +251,7 @@ struct HomeView: View {
                         }
                     }
 
-                    // Dynamic content tiles - always show this section
+                    // MARK: - Ready to Read Section (Tile-based design)
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Ready to read?")
                             .font(.title3.bold())
@@ -205,54 +269,110 @@ struct HomeView: View {
                                 }
                             }
                             .padding(.horizontal)
-                        } else {
-                            // Encouragement message when no content available
+                        } else if nuggets.isEmpty {
+                            // Empty state when no content at all with action tiles
                             VStack(spacing: 16) {
-                                Image(systemName: "plus.app")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(.secondary)
-                                    .symbolRenderingMode(.hierarchical)
+                                VStack(spacing: 12) {
+                                    Image(systemName: "plus.app")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(.secondary)
+                                        .symbolRenderingMode(.hierarchical)
 
-                                Text("Your Feed is empty. Save something to begin.")
-                                    .font(.headline)
+                                    Text("Your Feed is empty")
+                                        .font(.headline)
 
-                                Text("Add articles, videos, or links to your feed to start learning")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
+                                    Text("Add articles or links to start learning")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .padding(.top, 8)
 
-                                NavigationLink(destination: InboxView()) {
-                                    HStack {
-                                        Image(systemName: "plus.circle.fill")
-                                        Text("Save to Feed")
+                                // Action tiles grid
+                                LazyVGrid(columns: [
+                                    GridItem(.flexible(), spacing: 12),
+                                    GridItem(.flexible(), spacing: 12)
+                                ], spacing: 12) {
+                                    ActionTileView(
+                                        title: "Subscribe to News",
+                                        icon: "newspaper"
+                                    ) {
+                                        showRSSFeeds = true
+                                    }
+
+                                    ActionTileView(
+                                        title: "Custom Digest",
+                                        icon: "folder.badge.plus"
+                                    ) {
+                                        showCustomDigests = true
                                     }
                                 }
-                                .buttonStyle(GlassProminentButtonStyle())
+                                .padding(.horizontal, 4)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
+                            .padding()
+                            .glassEffect(in: .rect(cornerRadius: 16))
                             .padding(.horizontal)
+                        } else {
+                            // All caught up state with action tiles
+                            VStack(spacing: 16) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(.secondary)
+                                        .symbolRenderingMode(.hierarchical)
+
+                                    Text("You're all caught up!")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.top, 8)
+
+                                // Action tiles grid
+                                LazyVGrid(columns: [
+                                    GridItem(.flexible(), spacing: 12),
+                                    GridItem(.flexible(), spacing: 12)
+                                ], spacing: 12) {
+                                    ActionTileView(
+                                        title: "Subscribe to News",
+                                        icon: "newspaper"
+                                    ) {
+                                        showRSSFeeds = true
+                                    }
+
+                                    ActionTileView(
+                                        title: "Custom Digest",
+                                        icon: "folder.badge.plus"
+                                    ) {
+                                        showCustomDigests = true
+                                    }
+                                }
+                                .padding(.horizontal, 4)
+                            }
+                            .padding()
                             .glassEffect(in: .rect(cornerRadius: 16))
                             .padding(.horizontal)
                         }
 
-                        // Recent Nuggets
-                        let recentNuggets = nuggets.filter { $0.summary != nil && $0.isReady }.prefix(3)
+                        // Recent Nuggets Section - show all recent processed nuggets
+                        let recentNuggets = nuggets.filter { $0.summary != nil && $0.isReady }.prefix(5)
                         if !recentNuggets.isEmpty {
                             Text("Recent Nuggets \(SparkSymbol.spark)")
                                 .font(.title3.bold())
                                 .padding(.horizontal)
-                                .padding(.top, tiles.isEmpty ? 0 : 16)
+                                .padding(.top, tiles.isEmpty ? 0 : 8)
 
-                            List {
+                            VStack(spacing: 8) {
                                 ForEach(Array(recentNuggets)) { nugget in
                                     RecentNuggetRow(nugget: nugget) {
                                         openRecentNugget(nugget)
                                     }
-                                    .listRowBackground(Color.clear)
-                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                    .listRowSeparator(.hidden)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    .contextMenu {
+                                        Button {
+                                            shareToFriendsNugget = nugget
+                                        } label: {
+                                            Label("Share to Friends", systemImage: "person.2")
+                                        }
+
                                         Button(role: .destructive) {
                                             deleteNugget(nugget)
                                         } label: {
@@ -261,11 +381,7 @@ struct HomeView: View {
                                     }
                                 }
                             }
-                            .listStyle(.plain)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.clear)
-                            .frame(height: CGFloat(recentNuggets.count) * 110)
-                            .scrollDisabled(true)
+                            .padding(.horizontal)
                         }
                     }
 
@@ -277,7 +393,7 @@ struct HomeView: View {
                     await syncPendingNuggets()
                 }
 
-                // Floating header - opaque top section, liquid glass search bar
+                // Floating header - opaque top section, liquid glass catch-up bar
                 VStack(alignment: .leading, spacing: 0) {
                     // Opaque section (title, greeting) - content hidden behind this
                     VStack(alignment: .leading, spacing: 12) {
@@ -290,26 +406,26 @@ struct HomeView: View {
 
                             // Streak button inline with title (no circle)
                             Button {
+                                streakBounce.toggle()
                                 showStats = true
-                                HapticFeedback.selection()
+                                HapticFeedback.light()
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: "hands.and.sparkles.fill")
                                         .font(.system(size: 14))
                                         .symbolRenderingMode(.palette)
                                         .foregroundStyle(.primary, .yellow)
-                                        .symbolEffect(.bounce, value: showStats)
+                                        .symbolEffect(.bounce, value: streakBounce)
                                     Text("\(authService.currentUser?.streak ?? 0)")
                                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 }
                                 .foregroundColor(.primary)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(HapticPlainButtonStyle())
                             .onAppear {
                                 // Trigger bounce animation on first load
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showStats.toggle()
-                                    showStats.toggle()
+                                    streakBounce.toggle()
                                 }
                             }
                         }
@@ -324,16 +440,16 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(UIColor.systemBackground))
 
-                    // Search bar with liquid glass (content scrolls through this)
+                    // Catch-up bar with liquid glass
                     Button {
-                        showSmartProcess = true
+                        showCatchUp = true
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "magnifyingglass")
+                            Image(systemName: "text.bubble")
                                 .font(.system(size: 16))
                                 .foregroundColor(.secondary)
 
-                            Text(unprocessedCount > 0 ? "Search \(unprocessedCount) saved items..." : "Search your library...")
+                            Text(unprocessedCount > 0 ? "Catch me up on..." : "What would you like to read?")
                                 .font(.system(size: 15))
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -348,19 +464,9 @@ struct HomeView: View {
                         .contentShape(Capsule())
                         .glassEffect(.regular, in: .capsule)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HapticPlainButtonStyle())
                     .padding(.horizontal)
-                    .padding(.bottom, shouldShowUpgradeTile ? 12 : 16)
-
-                    // Upgrade tile (below search bar)
-                    if shouldShowUpgradeTile {
-                        PremiumTipCard {
-                            showSubscription = true
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 16)
-                        .background(Color(UIColor.systemBackground))
-                    }
+                    .padding(.bottom, 16)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -373,28 +479,42 @@ struct HomeView: View {
                     await loadNuggetsAsync()
                 }
             }
-            .fullScreenCover(isPresented: $showTestWebView) {
-                TestWebView()
-            }
             .sheet(isPresented: $showStats) {
                 StatsView()
                     .presentationCornerRadius(20)
                     .presentationBackgroundInteraction(.enabled)
             }
             .liquidModalTransition(isPresented: showStats)
-            .sheet(isPresented: $showSmartProcess) {
-                SmartProcessView(unprocessedCount: unprocessedCount) { newSession in
-                    // Session will be created by SmartProcessView
+            .sheet(isPresented: $showCatchUp) {
+                CatchUpView(
+                    unprocessedCount: unprocessedCount,
+                    availableCategories: availableCategories
+                ) { newSession in
                     session = newSession
                 }
-                .presentationDetents([.height(420), .medium])
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(20)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             }
-            .liquidModalTransition(isPresented: showSmartProcess)
+            .liquidModalTransition(isPresented: showCatchUp)
             .sheet(isPresented: $showSubscription) {
                 SubscriptionView()
+            }
+            .sheet(isPresented: $showRSSFeeds) {
+                RSSFeedsView()
+            }
+            .sheet(isPresented: $showCustomDigests) {
+                CustomDigestsView()
+            }
+            .sheet(isPresented: $showSharedWithMe) {
+                SharedWithMeView()
+            }
+            .sheet(item: $shareToFriendsNugget) { nugget in
+                ShareToFriendsSheet(nuggetId: nugget.nuggetId, nuggetTitle: nugget.title)
+            }
+            .navigationDestination(item: $selectedNuggetSession) { nuggetSession in
+                SessionView(session: nuggetSession)
             }
             .task {
                 // Use task instead of onAppear for async loading
@@ -430,7 +550,13 @@ struct HomeView: View {
             guard !Task.isCancelled else { return }
 
             do {
-                let loadedNuggets = try await NuggetService.shared.listNuggets()
+                // Fetch inbox and digests in parallel
+                async let inboxNuggets = NuggetService.shared.listNuggets(status: "inbox")
+                async let digestNuggets = NuggetService.shared.listNuggets(status: "digest")
+
+                let (inbox, digests) = try await (inboxNuggets, digestNuggets)
+                let loadedNuggets = inbox + digests
+
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
@@ -439,8 +565,8 @@ struct HomeView: View {
                         isLoading = false
                         lastLoadTime = Date()
                     }
-                    // Update badge count for new processed nuggets
-                    badgeManager.updateBadgeCount(with: loadedNuggets)
+                    // Update badge count for new processed nuggets (inbox only)
+                    badgeManager.updateBadgeCount(with: inbox)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -455,13 +581,13 @@ struct HomeView: View {
     }
 
     private func openRecentNugget(_ nugget: Nugget) {
-        // Create a session with just this nugget
-        let newSession = Session(
+        // Create a session with just this nugget for the SessionView
+        let session = Session(
             sessionId: nil,
             nuggets: [nugget],
             message: nil
         )
-        session = newSession
+        selectedNuggetSession = session
     }
 
     private func deleteNugget(_ nugget: Nugget) {
@@ -550,48 +676,67 @@ struct HomeView: View {
     private func startSessionForTile(_ tile: ContentTile) {
         errorMessage = nil
 
-        let filteredNuggets: [Nugget]
+        switch tile.tileType {
+        case .catchUp:
+            // Show all unread non-digest nuggets directly from local data
+            let nonDigestUnread = nuggets.filter {
+                $0.summary != nil &&
+                $0.isReady &&
+                $0.timesReviewed == 0 &&
+                $0.status == "inbox" &&
+                $0.isGrouped != true &&
+                $0.individualSummaries == nil
+            }.sorted { $0.createdAt > $1.createdAt }
 
-        switch tile.filter {
-        case .thisWeek:
-            guard let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) else { return }
-            filteredNuggets = nuggets.filter { $0.createdAt >= weekAgo && $0.summary == nil && $0.isReady }
-        case .today:
-            filteredNuggets = nuggets.filter { Calendar.current.isDateInToday($0.createdAt) && $0.summary == nil && $0.isReady }
-        case .yesterday:
-            filteredNuggets = nuggets.filter { Calendar.current.isDateInYesterday($0.createdAt) && $0.summary == nil && $0.isReady }
-        case .category(let category):
-            filteredNuggets = nuggets.filter { $0.category?.lowercased() == category.lowercased() && $0.summary == nil && $0.isReady }
-        }
-
-        guard filteredNuggets.count >= 2 else {
-            errorMessage = "Add at least 2 items to process"
-            return
-        }
-
-        // Take up to 3 nuggets for the session
-        let nuggetsToProcess = Array(filteredNuggets.prefix(3))
-
-        Task {
-            do {
-                // Process the nuggets first
-                try await PreferencesService.shared.processNuggets(nuggetIds: nuggetsToProcess.map { $0.nuggetId })
-
-                // Wait a bit for processing
-                try await Task.sleep(nanoseconds: 3_000_000_000)
-
-                // Start the session
-                let newSession = try await NuggetService.shared.startSession(size: min(nuggetsToProcess.count, 3))
-                await MainActor.run {
-                    session = newSession
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to start session: \(error.localizedDescription)"
-                }
+            if nonDigestUnread.isEmpty {
+                errorMessage = "You're all caught up!"
+            } else {
+                session = Session(
+                    sessionId: nil,
+                    nuggets: nonDigestUnread,
+                    message: nil
+                )
             }
+
+        case .category(let category):
+            // Show unread nuggets for this category directly from local data (excluding digests)
+            let categoryUnread = nuggets.filter {
+                $0.summary != nil &&
+                $0.isReady &&
+                $0.timesReviewed == 0 &&
+                $0.status == "inbox" &&
+                $0.category?.lowercased() == category.lowercased() &&
+                $0.isGrouped != true &&
+                $0.individualSummaries == nil
+            }.sorted { $0.createdAt > $1.createdAt }
+
+            if categoryUnread.isEmpty {
+                errorMessage = "No unread \(category) nuggets"
+            } else {
+                session = Session(
+                    sessionId: nil,
+                    nuggets: categoryUnread,
+                    message: nil
+                )
+            }
+
+        case .digests:
+            // Show unread digest nuggets directly from local data
+            let digestNuggets = unreadDigests.sorted { $0.createdAt > $1.createdAt }
+
+            if digestNuggets.isEmpty {
+                errorMessage = "No unread digests"
+            } else {
+                session = Session(
+                    sessionId: nil,
+                    nuggets: digestNuggets,
+                    message: nil
+                )
+            }
+
         }
     }
+
 }
 
 struct ContentTileView: View {
@@ -626,7 +771,36 @@ struct ContentTileView: View {
             .padding(18)
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HapticPlainButtonStyle())
+    }
+}
+
+struct ActionTileView: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(.primary)
+
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 12)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+        }
+        .buttonStyle(HapticPlainButtonStyle())
     }
 }
 
@@ -672,7 +846,7 @@ struct RecentNuggetRow: View {
             .padding()
             .glassEffect(in: .rect(cornerRadius: 12))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HapticPlainButtonStyle())
     }
 }
 
@@ -681,6 +855,61 @@ struct ScaleButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Digest Row (Unread processed nuggets)
+struct DigestRow: View {
+    let nugget: Nugget
+    let onTap: () -> Void
+
+    var articleCount: Int {
+        nugget.individualSummaries?.count ?? 1
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                // Unread indicator
+                Circle()
+                    .fill(Color.primary)
+                    .frame(width: 8, height: 8)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(nugget.title ?? "Nugget")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        if articleCount > 1 {
+                            Text("\(articleCount) articles")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        if let category = nugget.category {
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text(category.capitalized)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(14)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+        }
+        .buttonStyle(HapticPlainButtonStyle())
     }
 }
 

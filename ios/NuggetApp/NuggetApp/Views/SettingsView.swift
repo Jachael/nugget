@@ -2,11 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var authService: AuthService
-    @State private var preferences: UserPreferences?
     @State private var nuggets: [Nugget] = []
-    @State private var isLoadingPreferences = true
     @State private var isLoadingNuggets = true
-    @State private var showingEditPreferences = false
     @State private var showingDeleteConfirmation = false
     @State private var isDeletingAccount = false
     @State private var deleteError: String?
@@ -72,9 +69,9 @@ struct SettingsView: View {
                         } label: {
                             VStack(spacing: 0) {
                                 HStack(spacing: 16) {
-                                    Image(systemName: "person.circle.fill")
-                                        .font(.system(size: 36))
-                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "brain.head.profile.fill")
+                                        .font(.system(size: 28))
+                                        .foregroundStyle(.primary)
                                         .frame(width: 50)
 
                                     VStack(alignment: .leading, spacing: 6) {
@@ -221,16 +218,16 @@ struct SettingsView: View {
                         .padding(.horizontal)
 
                         VStack(spacing: 0) {
-                            // Auto-Processing
+                            // Smart Processing
                             NavigationLink {
                                 AutoProcessingSettingsView()
                             } label: {
                                 HStack {
-                                    Image(systemName: "gearshape.2.fill")
+                                    Image(systemName: "sparkles.rectangle.stack")
                                         .foregroundColor(.secondary)
                                         .frame(width: 28)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Auto-Processing")
+                                        Text("Smart Processing")
                                             .font(.body)
                                             .foregroundColor(.primary)
                                         Text("Schedule automatic content processing")
@@ -279,9 +276,105 @@ struct SettingsView: View {
 
                             Divider().padding(.horizontal)
 
+                            // Custom Digests (Ultimate)
+                            NavigationLink {
+                                CustomDigestsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "folder.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Custom Digests")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Combine feeds into personalized summaries")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if !isUltimate {
+                                        UltimateBadge()
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+
+                            Divider().padding(.horizontal)
+
+                            // Offline Mode (Ultimate)
+                            NavigationLink {
+                                OfflineNuggetsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Offline Mode")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Read nuggets without internet")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if !isUltimate {
+                                        UltimateBadge()
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+
+                            Divider().padding(.horizontal)
+
+                            // Reader Mode
+                            NavigationLink {
+                                ReaderModeSettingsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "doc.plaintext")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Reader Mode")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Strip ads and distractions from articles")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if !isPremium {
+                                        LockedBadge()
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+                        }
+                        .glassEffect(in: .rect(cornerRadius: 16))
+                        .padding(.horizontal)
+                    }
+
+                    // General Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("General")
+                            .font(.title3.bold())
+                            .padding(.horizontal)
+
+                        VStack(spacing: 0) {
                             // Notifications
                             NavigationLink {
-                                NotificationSettingsView()
+                                NotificationConfigView()
                             } label: {
                                 HStack {
                                     Image(systemName: "bell.badge.fill")
@@ -292,6 +385,170 @@ struct SettingsView: View {
                                             .font(.body)
                                             .foregroundColor(.primary)
                                         Text("Get notified when content is ready")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+                        }
+                        .glassEffect(in: .rect(cornerRadius: 16))
+                        .padding(.horizontal)
+                    }
+
+                    // Coming Soon Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text("Coming Soon")
+                                .font(.title3.bold())
+                            Image(systemName: "sparkle")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal)
+
+                        VStack(spacing: 0) {
+                            // Widgets & Quick Actions (Pro)
+                            HStack {
+                                Image(systemName: "square.grid.2x2.fill")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Widgets & Quick Actions")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("Home screen widgets and Siri shortcuts")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if isPremium {
+                                    ComingSoonBadge()
+                                } else {
+                                    LockedBadge()
+                                }
+                            }
+                            .padding()
+
+                            Divider().padding(.horizontal)
+
+                            // Audio Mode (Pro)
+                            HStack {
+                                Image(systemName: "headphones")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Audio Mode")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("Listen to your nuggets on the go")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if isPremium {
+                                    ComingSoonBadge()
+                                } else {
+                                    LockedBadge()
+                                }
+                            }
+                            .padding()
+
+                            Divider().padding(.horizontal)
+
+                            // X Integration (Ultimate)
+                            HStack {
+                                Image(systemName: "at")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("X Integration")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("Save posts and threads as nuggets")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if isUltimate {
+                                    ComingSoonBadge()
+                                } else {
+                                    UltimateBadge()
+                                }
+                            }
+                            .padding()
+
+                            Divider().padding(.horizontal)
+
+                            // Challenges & Leaderboards (Free)
+                            HStack {
+                                Image(systemName: "trophy.fill")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Challenges & Leaderboards")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("Compete with friends and earn badges")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                ComingSoonBadge()
+                            }
+                            .padding()
+
+                            Divider().padding(.horizontal)
+
+                            // Nugget Desktop (Ultimate)
+                            HStack {
+                                Image(systemName: "desktopcomputer")
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Nugget Desktop")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    Text("Access your nuggets on Mac and Windows")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if isUltimate {
+                                    ComingSoonBadge()
+                                } else {
+                                    UltimateBadge()
+                                }
+                            }
+                            .padding()
+                        }
+                        .glassEffect(in: .rect(cornerRadius: 16))
+                        .padding(.horizontal)
+                    }
+
+                    // Social Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Social")
+                            .font(.title3.bold())
+                            .padding(.horizontal)
+
+                        VStack(spacing: 0) {
+                            NavigationLink {
+                                FriendsView()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "person.2.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Friends")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Add friends and share nuggets")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                     }
@@ -322,15 +579,40 @@ struct SettingsView: View {
                                         .foregroundColor(.secondary)
                                         .frame(width: 28)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Onboarding & Instructions")
+                                        Text("How to Use Nugget")
                                             .font(.body)
                                             .foregroundColor(.primary)
-                                        Text("Learn how to use Nugget")
+                                        Text("Learn the basics and tips")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                            }
+
+                            Divider().padding(.horizontal)
+
+                            Button {
+                                openFeedbackPage()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "lightbulb.fill")
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Suggest a Feature")
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text("Vote on ideas and submit feedback")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -396,59 +678,6 @@ struct SettingsView: View {
                         .padding(.horizontal)
                     }
 
-                    // Preferences Section
-                    if let prefs = preferences {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Preferences")
-                                .font(.title3.bold())
-                                .padding(.horizontal)
-
-                            VStack(spacing: 0) {
-                                NavigationLink {
-                                    EditPreferencesView(preferences: prefs) { updated in
-                                        preferences = updated
-                                    }
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Interests")
-                                                .font(.body)
-                                            Text("\(prefs.interests.count) selected")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding()
-                                }
-
-                                Divider()
-                                    .padding(.horizontal)
-
-                                HStack {
-                                    Text("Daily Nuggets")
-                                    Spacer()
-                                    HStack(spacing: 6) {
-                                        Text("\(prefs.dailyNuggetLimit)")
-                                            .fontWeight(.medium)
-                                        if prefs.subscriptionTier == .pro || prefs.subscriptionTier == .ultimate {
-                                            Image(systemName: "crown.fill")
-                                                .foregroundColor(.secondary)
-                                                .font(.caption)
-                                        }
-                                    }
-                                    .foregroundColor(.secondary)
-                                }
-                                .padding()
-                            }
-                            .glassEffect(in: .rect(cornerRadius: 16))
-                            .padding(.horizontal)
-                        }
-                    }
-
                     // Account Actions
                     VStack(spacing: 12) {
                         Button(role: .destructive) {
@@ -491,7 +720,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Profile")
             .onAppear {
-                loadPreferences()
                 loadNuggets()
             }
             .alert("Delete Account", isPresented: $showingDeleteConfirmation) {
@@ -510,25 +738,6 @@ struct SettingsView: View {
                 if let error = deleteError {
                     Text(error)
                 }
-            }
-        }
-    }
-
-    private func loadPreferences() {
-        isLoadingPreferences = true
-
-        Task {
-            do {
-                let prefs = try await PreferencesService.shared.getPreferences()
-                await MainActor.run {
-                    preferences = prefs
-                    isLoadingPreferences = false
-                }
-            } catch {
-                await MainActor.run {
-                    isLoadingPreferences = false
-                }
-                print("Error loading preferences: \(error)")
             }
         }
     }
@@ -569,6 +778,18 @@ struct SettingsView: View {
             }
         }
     }
+
+    private func openFeedbackPage() {
+        // Get auth token and open feedback page
+        if let token = KeychainManager.shared.getToken(),
+           let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let url = URL(string: "https://nuggetdotcom.com/feedback.html?token=\(encodedToken)") {
+            UIApplication.shared.open(url)
+        } else if let url = URL(string: "https://nuggetdotcom.com/feedback.html") {
+            // Fall back to opening without token
+            UIApplication.shared.open(url)
+        }
+    }
 }
 
 // MARK: - Locked Badge
@@ -580,6 +801,32 @@ struct LockedBadge: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Color.secondary.opacity(0.8))
+            .cornerRadius(4)
+    }
+}
+
+// MARK: - Ultimate Badge
+struct UltimateBadge: View {
+    var body: some View {
+        Text("ULTIMATE")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.purple.opacity(0.8))
+            .cornerRadius(4)
+    }
+}
+
+// MARK: - Coming Soon Badge
+struct ComingSoonBadge: View {
+    var body: some View {
+        Text("SOON")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.blue.opacity(0.7))
             .cornerRadius(4)
     }
 }
@@ -737,157 +984,6 @@ struct ThemeButton: View {
             .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct EditPreferencesView: View {
-    @Environment(\.dismiss) var dismiss
-    let preferences: UserPreferences
-    let onSave: (UserPreferences) -> Void
-
-    @State private var selectedInterests: Set<String>
-    @State private var dailyNuggetLimit: Int
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    private let categories = UserPreferences.defaultCategories
-
-    init(preferences: UserPreferences, onSave: @escaping (UserPreferences) -> Void) {
-        self.preferences = preferences
-        self.onSave = onSave
-        _selectedInterests = State(initialValue: Set(preferences.interests))
-        _dailyNuggetLimit = State(initialValue: preferences.dailyNuggetLimit)
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Interests")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                    Text("Choose topics you'd like to learn about")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 12) {
-                        ForEach(categories, id: \.self) { category in
-                            CategoryButton(
-                                title: category.capitalized,
-                                isSelected: selectedInterests.contains(category)
-                            ) {
-                                if selectedInterests.contains(category) {
-                                    selectedInterests.remove(category)
-                                } else {
-                                    selectedInterests.insert(category)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding()
-                .glassEffect(in: .rect(cornerRadius: 16))
-                .padding(.horizontal)
-
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Daily Nuggets")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-
-                    Text("How many nuggets would you like per day?")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    VStack(spacing: 12) {
-                        Picker("Daily Nuggets", selection: $dailyNuggetLimit) {
-                            Text("1 nugget (Free)").tag(1)
-                            Text("3 nuggets").tag(3)
-                            Text("5 nuggets").tag(5)
-                            Text("10 nuggets").tag(10)
-                        }
-                        .pickerStyle(.segmented)
-
-                        if dailyNuggetLimit > 1 {
-                            HStack {
-                                Image(systemName: "crown.fill")
-                                    .foregroundColor(.secondary)
-                                Text("Premium feature")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .glassEffect(in: .capsule)
-                        }
-                    }
-                }
-                .padding()
-                .glassEffect(in: .rect(cornerRadius: 16))
-                .padding(.horizontal)
-
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundColor(.red)
-                        .padding()
-                        .glassEffect(in: .rect(cornerRadius: 10))
-                        .padding(.horizontal)
-                }
-            }
-            .padding(.vertical)
-        }
-        .navigationTitle("Edit Preferences")
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button {
-                    savePreferences()
-                } label: {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Text("Save")
-                            .fontWeight(.semibold)
-                    }
-                }
-                .disabled(selectedInterests.isEmpty || isSaving)
-            }
-        }
-    }
-
-    private func savePreferences() {
-        isSaving = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let updated = UserPreferences(
-                    interests: Array(selectedInterests),
-                    dailyNuggetLimit: dailyNuggetLimit,
-                    subscriptionTier: dailyNuggetLimit > 1 ? .premium : .free,
-                    customCategories: preferences.customCategories,
-                    categoryWeights: preferences.categoryWeights,
-                    onboardingCompleted: true
-                )
-
-                let result = try await PreferencesService.shared.updatePreferences(updated)
-
-                await MainActor.run {
-                    isSaving = false
-                    onSave(result)
-                    dismiss()
-                }
-            } catch {
-                await MainActor.run {
-                    isSaving = false
-                    errorMessage = "Failed to save preferences. Please try again."
-                    print("Error saving preferences: \(error)")
-                }
-            }
-        }
     }
 }
 

@@ -1,18 +1,18 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { v4 as uuidv4 } from 'uuid';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { extractUserId } from '../lib/auth';
-import { query, putItem, updateItem, TableNames } from '../lib/dynamo';
-import { UserFeedSubscription, Nugget } from '../lib/models';
-import { getLatestItems, createRecapNugget } from '../lib/rssParser';
-import { computePriorityScore } from '../lib/priority';
+import { query, TableNames } from '../lib/dynamo';
+import { UserFeedSubscription } from '../lib/models';
+
+const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'eu-west-1' });
 
 /**
  * POST /v1/feeds/fetch
- * Fetch latest content from user's subscribed RSS feeds and create recap nuggets
+ * Trigger async feed fetching - returns immediately with 202
  *
  * Optional query params:
  * - feedId: specific feed to fetch (if not provided, fetches all subscribed feeds)
- * - limit: number of items per feed (default: 10)
+ * - limit: number of items per feed (default: 5)
  */
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {
@@ -26,19 +26,17 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     }
 
     const specificFeedId = event.queryStringParameters?.feedId;
-    const limit = parseInt(event.queryStringParameters?.limit || '10');
+    const limit = parseInt(event.queryStringParameters?.limit || '5');
 
-    // Get user's active subscriptions
+    // Get user's active subscriptions to validate request
     let subscriptions = await query<UserFeedSubscription>(
       TableNames.feeds,
       'userId = :userId',
       { ':userId': userId }
     );
 
-    // Filter to active subscriptions only
     subscriptions = subscriptions.filter(sub => sub.isActive);
 
-    // If specific feed requested, filter to that feed
     if (specificFeedId) {
       subscriptions = subscriptions.filter(sub => sub.feedId === specificFeedId);
       if (subscriptions.length === 0) {
@@ -59,95 +57,26 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
-    const createdNuggets = [];
-    const errors = [];
-    const now = Date.now() / 1000;
+    // Invoke the worker Lambda asynchronously
+    const functionName = `nugget-${process.env.STAGE || 'dev'}-fetchFeedContentWorker`;
 
-    // Fetch content from each subscribed feed
-    for (const subscription of subscriptions) {
-      try {
-        console.log(`Fetching feed: ${subscription.feedName}`);
+    await lambdaClient.send(new InvokeCommand({
+      FunctionName: functionName,
+      InvocationType: 'Event', // Async - returns immediately
+      Payload: Buffer.from(JSON.stringify({
+        userId,
+        feedId: specificFeedId,
+        limit,
+      })),
+    }));
 
-        // Get latest items from the feed
-        const feedItems = await getLatestItems(
-          subscription.feedUrl,
-          subscription.rssFeedId,
-          subscription.feedName,
-          limit
-        );
-
-        if (feedItems.length === 0) {
-          console.log(`No items found in feed: ${subscription.feedName}`);
-          continue;
-        }
-
-        console.log(`Found ${feedItems.length} items in ${subscription.feedName}`);
-
-        // Create a recap nugget from the feed items
-        const recap = await createRecapNugget(
-          feedItems,
-          subscription.rssFeedId,
-          subscription.feedName
-        );
-
-        // Create a nugget from the recap
-        const nuggetId = uuidv4();
-        const nugget: Nugget = {
-          userId,
-          nuggetId,
-          sourceUrl: subscription.feedUrl,
-          sourceType: 'other',
-          rawTitle: recap.summary,
-          title: `${subscription.feedName} Recap`,
-          rawText: JSON.stringify(recap.articles),
-          status: 'inbox',
-          processingState: 'ready',
-          category: subscription.category,
-          summary: recap.summary,
-          keyPoints: recap.keyPoints,
-          question: `What insights can you gain from today's ${subscription.feedName} stories?`,
-          priorityScore: computePriorityScore(now, 0),
-          createdAt: now,
-          timesReviewed: 0,
-          // Store the individual articles for reference
-          isGrouped: true,
-          sourceUrls: recap.articles.map(a => a.link),
-        };
-
-        await putItem(TableNames.nuggets, nugget);
-
-        // Update the subscription's lastFetchedAt
-        await updateItem(
-          TableNames.feeds,
-          { userId, feedId: subscription.feedId },
-          { lastFetchedAt: now }
-        );
-
-        createdNuggets.push({
-          nuggetId: nugget.nuggetId,
-          feedName: subscription.feedName,
-          articleCount: recap.articles.length,
-          title: nugget.title,
-          category: nugget.category
-        });
-
-        console.log(`Created recap nugget for ${subscription.feedName}: ${nugget.nuggetId}`);
-      } catch (error) {
-        console.error(`Error fetching feed ${subscription.feedName}:`, error);
-        errors.push({
-          feedId: subscription.feedId,
-          feedName: subscription.feedName,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    }
+    console.log(`Triggered async feed fetch for user ${userId}, feeds: ${subscriptions.length}`);
 
     return {
-      statusCode: 200,
+      statusCode: 202,
       body: JSON.stringify({
-        message: `Fetched ${createdNuggets.length} feed recap(s)`,
-        nuggets: createdNuggets,
-        errors: errors.length > 0 ? errors : undefined
+        message: `Fetching ${subscriptions.length} feed(s). New digests will appear in your inbox shortly.`,
+        feedCount: subscriptions.length,
       }),
     };
   } catch (error) {

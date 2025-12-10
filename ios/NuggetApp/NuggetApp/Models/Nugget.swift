@@ -54,6 +54,45 @@ struct Nugget: Identifiable, Codable, Hashable {
         case individualSummaries
     }
 
+    /// Memberwise initializer for creating Nugget instances programmatically
+    init(
+        nuggetId: String,
+        sourceUrl: String,
+        sourceType: String,
+        title: String? = nil,
+        category: String? = nil,
+        status: String,
+        processingState: String? = nil,
+        summary: String? = nil,
+        keyPoints: [String]? = nil,
+        question: String? = nil,
+        createdAt: Date,
+        lastReviewedAt: Date? = nil,
+        timesReviewed: Int,
+        isGrouped: Bool? = nil,
+        sourceUrls: [String]? = nil,
+        sourceNuggetIds: [String]? = nil,
+        individualSummaries: [IndividualSummary]? = nil
+    ) {
+        self.nuggetId = nuggetId
+        self.sourceUrl = sourceUrl
+        self.sourceType = sourceType
+        self.title = title
+        self.category = category
+        self.status = status
+        self.processingState = processingState
+        self.summary = summary
+        self.keyPoints = keyPoints
+        self.question = question
+        self.createdAt = createdAt
+        self.lastReviewedAt = lastReviewedAt
+        self.timesReviewed = timesReviewed
+        self.isGrouped = isGrouped
+        self.sourceUrls = sourceUrls
+        self.sourceNuggetIds = sourceNuggetIds
+        self.individualSummaries = individualSummaries
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         nuggetId = try container.decode(String.self, forKey: .nuggetId)

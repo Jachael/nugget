@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nugget</title>
+    <meta name="description" content="AI-powered content summary shared via Nugget">
+    <meta property="og:title" content="Nugget">
+    <meta property="og:description" content="AI-powered content summary">
+    <meta property="og:type" content="article">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        :root {
+            --bg-light: #ffffff;
+            --bg-dark: #000000;
+            --text-light: #000000;
+            --text-dark: #ffffff;
+            --text-secondary-light: #666666;
+            --text-secondary-dark: #999999;
+            --card-bg-light: rgba(255, 255, 255, 0.85);
+            --card-bg-dark: rgba(30, 30, 30, 0.85);
+            --border-light: rgba(0, 0, 0, 0.1);
+            --border-dark: rgba(255, 255, 255, 0.1);
+            --accent: #FFD700;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: var(--bg-dark);
+                --text: var(--text-dark);
+                --text-secondary: var(--text-secondary-dark);
+                --card-bg: var(--card-bg-dark);
+                --border: var(--border-dark);
+            }
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: var(--bg-light);
+                --text: var(--text-light);
+                --text-secondary: var(--text-secondary-light);
+                --card-bg: var(--card-bg-light);
+                --border: var(--border-light);
+            }
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            padding-bottom: env(safe-area-inset-bottom, 16px);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            height: 100%;
+            max-height: 850px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-stack {
+            flex: 1;
+            position: relative;
+        }
+
+        .card {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--card-bg);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border-radius: 32px;
+            border: 1.5px solid var(--border);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1), 0 5px 10px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+            will-change: transform, opacity;
+        }
+
+        .card-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+            padding-top: 24px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .card-footer {
+            padding: 16px 28px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+        }
+
+        .swipe-hint {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .swipe-hint svg {
+            width: 16px;
+            height: 16px;
+            opacity: 0.7;
+        }
+
+        /* Content styles */
+        .category {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            background: var(--border);
+            padding: 6px 12px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+
+        .article-indicator {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1.25;
+            margin-bottom: 16px;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 16px 0;
+        }
+
+        .summary {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text);
+            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .key-points {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .key-point {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .key-point-icon {
+            color: var(--accent);
+            font-size: 11px;
+            padding-top: 3px;
+            flex-shrink: 0;
+        }
+
+        .key-point-text {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .question {
+            font-size: 14px;
+            font-style: italic;
+            line-height: 1.5;
+            opacity: 0.8;
+        }
+
+        .articles-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .article-item {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 0.5px solid var(--border);
+            padding: 14px;
+        }
+
+        .article-title {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            line-height: 1.4;
+        }
+
+        .article-source {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* CTA Card */
+        .cta-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .cta-logo .spark {
+            font-size: 32px;
+        }
+
+        .cta-title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .cta-subtitle {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            max-width: 280px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+            max-width: 280px;
+        }
+
+        .cta-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: var(--text);
+            color: var(--bg);
+            font-size: 17px;
+            font-weight: 600;
+            padding: 16px 32px;
+            border-radius: 16px;
+            text-decoration: none;
+            transition: transform 0.2s, opacity 0.2s;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .cta-button:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
+
+        .cta-button:active {
+            transform: scale(0.98);
+        }
+
+        .cta-button.secondary {
+            background: transparent;
+            color: var(--text);
+            border: 1.5px solid var(--border);
+        }
+
+        .cta-button svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Confetti */
+        .confetti-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            opacity: 0;
+        }
+
+        @keyframes confetti-fall {
+            0% {
+                transform: translateY(-100px) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(800px) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        /* Loading */
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: var(--card-bg);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border-radius: 32px;
+            border: 1.5px solid var(--border);
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--text);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error */
+        .error {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .error-icon { font-size: 48px; margin-bottom: 16px; }
+        .error-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        .error-message { color: var(--text-secondary); font-size: 14px; }
+
+        .spark { color: var(--accent); }
+
+        /* Progress dots */
+        .progress-dots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px 0;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: background 0.3s, transform 0.3s;
+        }
+
+        .dot.active {
+            background: var(--text);
+            transform: scale(1.25);
+        }
+
+        .dot.completed {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card-stack" id="cardStack">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <span>Loading nugget...</span>
+            </div>
+        </div>
+        <div class="progress-dots" id="progressDots"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://esc8zwzche.execute-api.eu-west-1.amazonaws.com';
+        const SPARK = '✦';
+        const SWIPE_THRESHOLD = 80;
+        const ROTATION_FACTOR = 0.1;
+
+        // SF Symbols as SVG
+        const ICONS = {
+            chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
+            chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`,
+            share: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>`,
+            sparkles: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0L14.59 8.41L23 11L14.59 13.59L12 22L9.41 13.59L1 11L9.41 8.41L12 0Z"/></svg>`
+        };
+
+        let cards = [];
+        let currentIndex = 0;
+        let shareUrl = '';
+
+        // Swipe state
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let currentX = 0;
+        let isHorizontalSwipe = null;
+        let activeCard = null;
+
+        async function loadNugget() {
+            const path = window.location.pathname;
+            const shareId = path.split('/').pop();
+            shareUrl = window.location.href;
+
+            if (!shareId) {
+                showError('Invalid share link');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/v1/shared/${shareId}`);
+
+                if (!response.ok) {
+                    showError(response.status === 404 ? 'This nugget is no longer available' : 'Failed to load nugget');
+                    return;
+                }
+
+                const nugget = await response.json();
+
+                if (nugget.title) {
+                    document.title = `${nugget.title} - Nugget`;
+                    document.querySelector('meta[property="og:title"]').content = nugget.title;
+                }
+                if (nugget.summary) {
+                    document.querySelector('meta[property="og:description"]').content = nugget.summary.slice(0, 200);
+                }
+
+                buildCards(nugget);
+                render();
+            } catch (err) {
+                console.error('Error loading nugget:', err);
+                showError('Failed to load nugget');
+            }
+        }
+
+        function buildCards(nugget) {
+            cards = [];
+
+            if (nugget.isGrouped && nugget.individualSummaries && nugget.individualSummaries.length > 1) {
+                cards.push({
+                    type: 'overview',
+                    category: nugget.category,
+                    title: nugget.title,
+                    articles: nugget.individualSummaries
+                });
+
+                nugget.individualSummaries.forEach((article, index) => {
+                    cards.push({
+                        type: 'article',
+                        index: index + 1,
+                        total: nugget.individualSummaries.length,
+                        title: article.title,
+                        summary: article.summary,
+                        keyPoints: article.keyPoints,
+                        sourceUrl: article.sourceUrl
+                    });
+                });
+            } else {
+                cards.push({
+                    type: 'single',
+                    category: nugget.category,
+                    title: nugget.title,
+                    summary: nugget.summary,
+                    keyPoints: nugget.keyPoints,
+                    question: nugget.question
+                });
+            }
+
+            cards.push({ type: 'cta' });
+        }
+
+        function render() {
+            const stack = document.getElementById('cardStack');
+            stack.innerHTML = '';
+
+            const startIdx = currentIndex;
+            const endIdx = Math.min(currentIndex + 3, cards.length);
+
+            for (let i = endIdx - 1; i >= startIdx; i--) {
+                const cardEl = createCard(cards[i], i);
+                const depth = i - currentIndex;
+
+                if (depth === 0) {
+                    cardEl.style.transform = 'translateX(0) rotate(0deg)';
+                    cardEl.style.opacity = '1';
+                    cardEl.style.zIndex = '3';
+                } else if (depth === 1) {
+                    cardEl.style.transform = 'scale(0.95) translateY(10px)';
+                    cardEl.style.opacity = '0.7';
+                    cardEl.style.zIndex = '2';
+                } else {
+                    cardEl.style.transform = 'scale(0.9) translateY(20px)';
+                    cardEl.style.opacity = '0.4';
+                    cardEl.style.zIndex = '1';
+                }
+
+                stack.appendChild(cardEl);
+            }
+
+            renderDots();
+            setupSwipeHandlers();
+
+            // Trigger confetti on CTA card
+            if (cards[currentIndex]?.type === 'cta') {
+                setTimeout(launchConfetti, 100);
+            }
+        }
+
+        function createCard(data, index) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.dataset.index = index;
+
+            const isLastContent = index === cards.length - 2;
+            let html = '';
+
+            if (data.type === 'overview') {
+                html = `
+                    <div class="card-content">
+                        ${data.category ? `<div class="category">${esc(data.category.toUpperCase())}</div>` : ''}
+                        <h1 class="title">${esc(data.title || 'Nugget')} <span style="color: white;">${SPARK}</span></h1>
+                        <div class="divider"></div>
+                        <div class="section">
+                            <div class="section-header"><span>📄</span> Content in this nugget</div>
+                            <div class="articles-list">
+                                ${data.articles.map(a => `
+                                    <div class="article-item">
+                                        <div class="article-title">${esc(a.title)}</div>
+                                        ${a.sourceUrl ? `<div class="article-source">${getHost(a.sourceUrl)}</div>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="swipe-hint">${ICONS.chevronDown} Scroll for detail</div>
+                        <div class="swipe-hint">${ICONS.chevronLeft} Swipe for next</div>
+                    </div>
+                `;
+            } else if (data.type === 'article') {
+                html = `
+                    <div class="card-content">
+                        <div class="article-indicator">Article ${data.index} of ${data.total}</div>
+                        <h1 class="title">${esc(data.title)}</h1>
+                        ${data.summary ? `
+                            <div class="section">
+                                <div class="section-header"><span>📝</span> Summary</div>
+                                <p class="summary" style="margin:0">${esc(data.summary)}</p>
+                            </div>
+                        ` : ''}
+                        ${data.keyPoints?.length ? `
+                            <div class="section">
+                                <div class="section-header"><span>💡</span> Key Points</div>
+                                <div class="key-points">
+                                    ${data.keyPoints.map(p => `
+                                        <div class="key-point">
+                                            <span class="key-point-icon">${SPARK}</span>
+                                            <span class="key-point-text">${esc(p)}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${data.sourceUrl ? `
+                            <div class="section">
+                                <div class="section-header"><span>🔗</span> Source</div>
+                                <a href="${data.sourceUrl}" target="_blank" rel="noopener" style="color: var(--text-secondary); font-size: 13px; word-break: break-all;">${getHost(data.sourceUrl)}</a>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="card-footer">
+                        <div class="swipe-hint">${ICONS.chevronDown} Scroll for detail</div>
+                        <div class="swipe-hint">${ICONS.chevronLeft} ${isLastContent ? 'Swipe to finish' : 'Swipe for next'}</div>
+                    </div>
+                `;
+            } else if (data.type === 'single') {
+                html = `
+                    <div class="card-content">
+                        ${data.category ? `<div class="category">${esc(data.category.toUpperCase())}</div>` : ''}
+                        <h1 class="title">${esc(data.title || 'Nugget')} <span style="color: white;">${SPARK}</span></h1>
+                        <div class="divider"></div>
+                        ${data.summary ? `<p class="summary">${esc(data.summary)}</p>` : ''}
+                        ${data.keyPoints?.length ? `
+                            <div class="section">
+                                <div class="section-header"><span>💡</span> Key Insights <span class="spark">${SPARK}</span></div>
+                                <div class="key-points">
+                                    ${data.keyPoints.map(p => `
+                                        <div class="key-point">
+                                            <span class="key-point-icon">${SPARK}</span>
+                                            <span class="key-point-text">${esc(p)}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${data.question ? `
+                            <div class="section">
+                                <div class="section-header"><span>💭</span> Reflect</div>
+                                <p class="question">${esc(data.question)}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="card-footer">
+                        <div class="swipe-hint">${ICONS.chevronDown} Scroll for detail</div>
+                        <div class="swipe-hint">${ICONS.chevronLeft} Swipe to finish</div>
+                    </div>
+                `;
+            } else if (data.type === 'cta') {
+                html = `
+                    <div class="confetti-container" id="confettiContainer"></div>
+                    <div class="cta-content">
+                        <h1 class="cta-title">Nugget</h1>
+                        <p class="cta-subtitle">Turn content into digestible reading with AI-powered summaries</p>
+                        <div class="cta-buttons">
+                            <a href="https://nuggetdotcom.com" class="cta-button">
+                                Get Nugget
+                            </a>
+                            <button class="cta-button secondary" onclick="shareWithFriends()">
+                                ${ICONS.share}
+                                Share with friends
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = html;
+            return card;
+        }
+
+        function launchConfetti() {
+            const container = document.getElementById('confettiContainer');
+            if (!container) return;
+
+            const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
+            const shapes = ['circle', 'square', 'triangle'];
+
+            for (let i = 0; i < 50; i++) {
+                setTimeout(() => {
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti';
+
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                    const left = Math.random() * 100;
+                    const delay = Math.random() * 0.5;
+                    const duration = 2 + Math.random() * 2;
+                    const size = 6 + Math.random() * 8;
+
+                    confetti.style.left = `${left}%`;
+                    confetti.style.width = `${size}px`;
+                    confetti.style.height = `${size}px`;
+                    confetti.style.background = color;
+                    confetti.style.animationDelay = `${delay}s`;
+                    confetti.style.animation = `confetti-fall ${duration}s ease-out forwards`;
+
+                    if (shape === 'circle') {
+                        confetti.style.borderRadius = '50%';
+                    } else if (shape === 'triangle') {
+                        confetti.style.width = '0';
+                        confetti.style.height = '0';
+                        confetti.style.background = 'transparent';
+                        confetti.style.borderLeft = `${size/2}px solid transparent`;
+                        confetti.style.borderRight = `${size/2}px solid transparent`;
+                        confetti.style.borderBottom = `${size}px solid ${color}`;
+                    }
+
+                    container.appendChild(confetti);
+
+                    setTimeout(() => confetti.remove(), (duration + delay) * 1000);
+                }, i * 30);
+            }
+        }
+
+        function shareWithFriends() {
+            if (navigator.share) {
+                navigator.share({
+                    title: document.title,
+                    text: 'Check out this nugget!',
+                    url: shareUrl
+                }).catch(() => {});
+            } else {
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    alert('Link copied to clipboard!');
+                }).catch(() => {
+                    prompt('Copy this link:', shareUrl);
+                });
+            }
+        }
+
+        function setupSwipeHandlers() {
+            const stack = document.getElementById('cardStack');
+
+            stack.removeEventListener('touchstart', onTouchStart);
+            stack.removeEventListener('touchmove', onTouchMove);
+            stack.removeEventListener('touchend', onTouchEnd);
+            stack.removeEventListener('mousedown', onMouseDown);
+
+            stack.addEventListener('touchstart', onTouchStart, { passive: true });
+            stack.addEventListener('touchmove', onTouchMove, { passive: false });
+            stack.addEventListener('touchend', onTouchEnd);
+            stack.addEventListener('mousedown', onMouseDown);
+        }
+
+        function getTopCard() {
+            const stack = document.getElementById('cardStack');
+            return stack.querySelector(`.card[data-index="${currentIndex}"]`);
+        }
+
+        function onTouchStart(e) {
+            if (currentIndex >= cards.length - 1) return;
+            activeCard = getTopCard();
+            if (!activeCard) return;
+
+            isDragging = true;
+            isHorizontalSwipe = null;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            currentX = startX;
+            activeCard.style.transition = 'none';
+        }
+
+        function onTouchMove(e) {
+            if (!isDragging || !activeCard) return;
+
+            currentX = e.touches[0].clientX;
+            const currentY = e.touches[0].clientY;
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+
+            if (isHorizontalSwipe === null && (Math.abs(diffX) > 8 || Math.abs(diffY) > 8)) {
+                isHorizontalSwipe = Math.abs(diffX) > Math.abs(diffY);
+            }
+
+            if (isHorizontalSwipe) {
+                e.preventDefault();
+                const rotation = diffX * ROTATION_FACTOR;
+                activeCard.style.transform = `translateX(${diffX}px) rotate(${rotation}deg)`;
+            }
+        }
+
+        function onTouchEnd() {
+            if (!isDragging || !activeCard) return;
+            finishSwipe();
+        }
+
+        function onMouseDown(e) {
+            if (currentIndex >= cards.length - 1) return;
+            activeCard = getTopCard();
+            if (!activeCard) return;
+
+            isDragging = true;
+            isHorizontalSwipe = null;
+            startX = e.clientX;
+            startY = e.clientY;
+            currentX = startX;
+            activeCard.style.transition = 'none';
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function onMouseMove(e) {
+            if (!isDragging || !activeCard) return;
+
+            currentX = e.clientX;
+            const currentY = e.clientY;
+            const diffX = currentX - startX;
+            const diffY = currentY - startY;
+
+            if (isHorizontalSwipe === null && (Math.abs(diffX) > 8 || Math.abs(diffY) > 8)) {
+                isHorizontalSwipe = Math.abs(diffX) > Math.abs(diffY);
+            }
+
+            if (isHorizontalSwipe) {
+                const rotation = diffX * ROTATION_FACTOR;
+                activeCard.style.transform = `translateX(${diffX}px) rotate(${rotation}deg)`;
+            }
+        }
+
+        function onMouseUp() {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            if (!isDragging || !activeCard) return;
+            finishSwipe();
+        }
+
+        function finishSwipe() {
+            const diffX = currentX - startX;
+
+            activeCard.style.transition = 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease';
+
+            if (isHorizontalSwipe && Math.abs(diffX) > SWIPE_THRESHOLD) {
+                if (diffX < 0) {
+                    activeCard.style.transform = `translateX(-120%) rotate(-15deg)`;
+                    activeCard.style.opacity = '0';
+                    setTimeout(() => {
+                        currentIndex++;
+                        render();
+                    }, 300);
+                } else if (currentIndex > 0) {
+                    currentIndex--;
+                    render();
+                } else {
+                    activeCard.style.transform = 'translateX(0) rotate(0deg)';
+                }
+            } else {
+                activeCard.style.transform = 'translateX(0) rotate(0deg)';
+            }
+
+            isDragging = false;
+            isHorizontalSwipe = null;
+            activeCard = null;
+        }
+
+        function renderDots() {
+            const dots = document.getElementById('progressDots');
+            dots.innerHTML = cards.map((_, i) => {
+                let cls = 'dot';
+                if (i === currentIndex) cls += ' active';
+                else if (i < currentIndex) cls += ' completed';
+                return `<div class="${cls}"></div>`;
+            }).join('');
+        }
+
+        function showError(msg) {
+            const stack = document.getElementById('cardStack');
+            stack.innerHTML = `
+                <div class="card" style="transform: none; opacity: 1;">
+                    <div class="error">
+                        <div class="error-icon">😕</div>
+                        <div class="error-title">Oops!</div>
+                        <div class="error-message">${esc(msg)}</div>
+                        <a href="https://nuggetdotcom.com" class="cta-button" style="margin-top: 24px;">Visit Nugget</a>
+                    </div>
+                </div>
+            `;
+        }
+
+        function esc(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getHost(url) {
+            try { return new URL(url).hostname; }
+            catch { return url; }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' && currentIndex < cards.length - 1) {
+                currentIndex++;
+                render();
+            } else if (e.key === 'ArrowRight' && currentIndex > 0) {
+                currentIndex--;
+                render();
+            }
+        });
+
+        loadNugget();
+    </script>
+</body>
+</html>

@@ -2,8 +2,9 @@ import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { extractUserId } from '../lib/auth';
-import { getItem, queryItems, putItem, TableNames } from '../lib/dynamo';
+import { getItem, queryItems, updateItem, TableNames } from '../lib/dynamo';
 import { User, Nugget } from '../lib/models';
+import { groupNuggetsByCategory } from '../lib/smartGrouping';
 
 const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'eu-west-1' });
 
@@ -85,81 +86,83 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
-    // Process nuggets as a group if there are 2 or more
-    if (nuggetsToProcess.length >= 2) {
-      const now = Date.now() / 1000;
-      const groupedNuggetId = `group-${uuidv4()}`;
+    // IMMEDIATELY mark all source nuggets as "processing" to hide them from the feed
+    // This prevents the user from seeing individual articles while they're being processed
+    console.log(`Marking ${nuggetsToProcess.length} nuggets as processing...`);
+    const markProcessingPromises = nuggetsToProcess.map(nugget =>
+      updateItem(TableNames.nuggets, { userId, nuggetId: nugget.nuggetId }, {
+        processingState: 'processing',
+      })
+    );
+    await Promise.all(markProcessingPromises);
+    console.log(`All ${nuggetsToProcess.length} nuggets marked as processing`);
 
-      // Detect common categories
-      const categoryCount: Record<string, number> = {};
-      nuggetsToProcess.forEach(n => {
-        if (n.category) {
-          categoryCount[n.category] = (categoryCount[n.category] || 0) + 1;
+    // Group nuggets by category using smart grouping
+    // This ensures articles about different topics become separate nuggets
+    const categoryGroups = groupNuggetsByCategory(nuggetsToProcess);
+
+    console.log(`Smart grouping created ${categoryGroups.length} groups from ${nuggetsToProcess.length} nuggets`);
+    categoryGroups.forEach(g => console.log(`  - Category "${g.category}": ${g.nuggets.length} nuggets`));
+
+    const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
+    const groupedNuggetIds: string[] = [];
+
+    // Process each category group
+    for (const group of categoryGroups) {
+      if (group.nuggets.length >= 2) {
+        // Create a grouped nugget for this category
+        const groupedNuggetId = `group-${uuidv4()}`;
+        groupedNuggetIds.push(groupedNuggetId);
+
+        // DON'T create a placeholder nugget that users can see!
+        // Instead, just trigger the AI processing which will create the nugget when ready
+        console.log(`Invoking ${functionName} for category "${group.category}" group ${groupedNuggetId} with ${group.nuggets.length} articles`);
+
+        try {
+          await lambda.send(new InvokeCommand({
+            FunctionName: functionName,
+            InvocationType: 'Event',
+            Payload: Buffer.from(JSON.stringify({
+              userId,
+              nuggetIds: group.nuggets.map(n => n.nuggetId),
+              grouped: true,
+              groupedNuggetId,
+              category: group.category,
+            })),
+          }));
+        } catch (err) {
+          console.error(`Background processing invocation failed for group ${groupedNuggetId}:`, err);
         }
-      });
-      const dominantCategory = Object.keys(categoryCount).length > 0
-        ? Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0][0]
-        : 'mixed';
-
-      // Create grouped nugget with minimal placeholder content
-      // AI will fill in the real summary, keyPoints, etc.
-      const groupedNugget: Nugget = {
-        userId,
-        nuggetId: groupedNuggetId,
-        sourceUrl: nuggetsToProcess[0].sourceUrl,
-        sourceType: 'other',
-        title: `Processing ${nuggetsToProcess.length} articles...`,
-        rawTitle: `Processing ${nuggetsToProcess.length} articles...`,
-        category: dominantCategory,
-        status: 'inbox',
-        createdAt: now,
-        priorityScore: 100,
-        timesReviewed: 0,
-        processingState: 'processing', // Will be updated to 'ready' by AI
-        isGrouped: true,
-        sourceUrls: nuggetsToProcess.map(n => n.sourceUrl),
-        sourceNuggetIds: nuggetsToProcess.map(n => n.nuggetId),
-        summary: 'AI is analyzing and summarizing your articles...',
-        keyPoints: ['Processing in progress'],
-        question: 'Processing...',
-      };
-
-      // Save the grouped nugget
-      await putItem(TableNames.nuggets, groupedNugget);
-
-      // Trigger background processing to enhance summaries with AI
-      const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
-      console.log(`Invoking ${functionName} for grouped nugget ${groupedNuggetId} with ${nuggetsToProcess.length} articles`);
-      try {
-        const invokeResult = await lambda.send(new InvokeCommand({
-          FunctionName: functionName,
-          InvocationType: 'Event',
-          Payload: Buffer.from(JSON.stringify({
-            userId,
-            nuggetIds: nuggetsToProcess.map(n => n.nuggetId),
-            grouped: true,
-            groupedNuggetId, // Pass the ID so AI can update it
-          })),
-        }));
-        console.log('Lambda invocation result:', invokeResult);
-      } catch (err) {
-        console.error('Background processing invocation failed:', err);
-        // Don't fail the request - the grouped nugget is already created
+      } else if (group.nuggets.length === 1) {
+        // Process single nugget individually
+        const nugget = group.nuggets[0];
+        try {
+          await lambda.send(new InvokeCommand({
+            FunctionName: functionName,
+            InvocationType: 'Event',
+            Payload: Buffer.from(JSON.stringify({ userId, nuggetId: nugget.nuggetId })),
+          }));
+          console.log(`Invoked AI processing for single nugget ${nugget.nuggetId}`);
+        } catch (err) {
+          console.error(`Background processing invocation failed for nugget ${nugget.nuggetId}:`, err);
+        }
       }
+    }
 
+    // If we have groups, return success
+    if (categoryGroups.length > 0) {
       return {
         statusCode: 200,
         body: JSON.stringify({
-          message: `Created digest of ${nuggetsToProcess.length} articles`,
+          message: `Processing ${nuggetsToProcess.length} articles in ${categoryGroups.length} category group(s)`,
           processedCount: nuggetsToProcess.length,
-          nuggetIds: [groupedNuggetId],
-          groupedNuggetId,
+          groupCount: categoryGroups.length,
+          categories: categoryGroups.map(g => g.category),
         }),
       };
     }
 
-    // If only one nugget, process individually
-    const functionName = `nugget-${process.env.STAGE || 'dev'}-summariseNugget`;
+    // If only one nugget (this shouldn't happen since groupNuggetsByCategory handles single nuggets above)
     const invocationPromises = nuggetsToProcess.map(nugget =>
       lambda.send(new InvokeCommand({
         FunctionName: functionName,

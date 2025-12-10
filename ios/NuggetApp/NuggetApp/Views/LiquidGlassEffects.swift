@@ -266,11 +266,11 @@ struct SparkBullet: View {
     }
 }
 
-// MARK: - Category Dot
+// MARK: - Category Dot (Unread indicator - white in dark mode, black in light mode)
 struct GoldCategoryDot: View {
     var body: some View {
         Circle()
-            .fill(Color.secondary)
+            .fill(Color.primary)
             .frame(width: 6, height: 6)
     }
 }
@@ -292,6 +292,11 @@ struct GlassProminentButtonStyle: ButtonStyle {
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    HapticFeedback.light()
+                }
+            }
     }
 }
 
@@ -310,6 +315,25 @@ struct GlassButtonStyle: ButtonStyle {
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    HapticFeedback.light()
+                }
+            }
+    }
+}
+
+/// Plain button style with haptic feedback for list items and cards
+struct HapticPlainButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed {
+                    HapticFeedback.selection()
+                }
+            }
     }
 }
 
@@ -328,5 +352,71 @@ extension View {
 
     func goldUnderline() -> some View {
         modifier(GoldUnderline())
+    }
+
+    /// Adds haptic feedback when a toggle value changes
+    func hapticToggle(_ value: Bool) -> some View {
+        self.onChange(of: value) { _, _ in
+            HapticFeedback.selection()
+        }
+    }
+}
+
+// MARK: - Premium Feature Gate
+
+struct PremiumFeatureGate: View {
+    let feature: String
+    let description: String
+    let icon: String
+    let requiredTier: String
+
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Icon
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundColor(.primary.opacity(0.6))
+
+            // Text
+            VStack(spacing: 12) {
+                Text(feature)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text(description)
+                    .font(.system(size: 17))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            // Upgrade prompt
+            VStack(spacing: 8) {
+                Text("Requires \(requiredTier)")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                NavigationLink {
+                    SubscriptionView()
+                } label: {
+                    Text("Upgrade")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Color(UIColor.systemBackground))
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 14)
+                        .background(Color.primary)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.top, 16)
+
+            Spacer()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(feature)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -3,272 +3,346 @@ import StoreKit
 
 struct SubscriptionView: View {
     @StateObject private var subscriptionService = SubscriptionService.shared
+    @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedProduct: Product?
-    @State private var currentIndex = 1 // Start on Pro (middle card)
-    @State private var dragOffset: CGFloat = 0
+    @State private var selectedTierIndex = 1 // Start on Pro (middle)
+    @State private var showPremiumOnboarding = false
 
-    private let cardWidth: CGFloat = UIScreen.main.bounds.width - 64
-    private let cardSpacing: CGFloat = 12
-
-    private var tiers: [TierData] {
+    private var tiers: [TierInfo] {
         let proProduct = subscriptionService.products.first(where: { $0.id == "com.nugget.pro" })
         let ultimateProduct = subscriptionService.products.first(where: { $0.id == "com.nugget.ultimate" })
 
         return [
-            TierData(
+            TierInfo(
                 tier: .free,
-                title: "Free",
+                name: "Free",
                 price: "$0",
                 period: "forever",
                 features: [
-                    "3 nuggets per day",
-                    "Basic processing",
-                    "Manual nugget creation",
-                    "Daily learning streaks"
+                    "5 nuggets per day",
+                    "3 swipe sessions",
+                    "Learning streaks",
+                    "5 friends max"
                 ],
                 product: nil,
-                isRecommended: false
+                accentColor: .secondary
             ),
-            TierData(
+            TierInfo(
                 tier: .plus,
-                title: "Pro",
+                name: "Pro",
                 price: proProduct?.displayPrice ?? "$4.99",
-                period: "per month",
+                period: "month",
                 features: [
-                    "10 nuggets per day",
-                    "Auto-processing",
-                    "Smart grouping",
-                    "Push notifications",
-                    "Priority support"
+                    "50 nuggets per day",
+                    "Unlimited swipes",
+                    "Smart Processing",
+                    "Reader Mode",
+                    "25 friends"
                 ],
                 product: proProduct,
-                isRecommended: false
+                accentColor: .blue
             ),
-            TierData(
+            TierInfo(
                 tier: .pro,
-                title: "Ultimate",
+                name: "Ultimate",
                 price: ultimateProduct?.displayPrice ?? "$9.99",
-                period: "per month",
+                period: "month",
                 features: [
                     "Unlimited nuggets",
-                    "RSS feed support",
-                    "Priority processing",
-                    "Advanced analytics",
-                    "Custom categories",
-                    "Early access to features"
+                    "RSS feeds",
+                    "Custom feeds",
+                    "Offline mode",
+                    "Unlimited friends"
                 ],
                 product: ultimateProduct,
-                isRecommended: true
+                accentColor: .goldAccent
             )
         ]
     }
 
+    private var selectedTier: TierInfo {
+        tiers[selectedTierIndex]
+    }
+
     var body: some View {
-        ZStack {
-            // Clear background for system blur
-            Color.clear
-                .ignoresSafeArea()
-
+        NavigationStack {
             VStack(spacing: 0) {
-                // Header
-                headerView
-                    .padding(.top, 16)
+                // Compact tier selector
+                tierSelector
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
 
-                Spacer()
+                // Scrollable content
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        // Price display
+                        priceCard
+                            .padding(.top, 16)
 
-                // Swipeable Cards
-                GeometryReader { geometry in
-                    let totalOffset = -CGFloat(currentIndex) * (cardWidth + cardSpacing) + (geometry.size.width - cardWidth) / 2
-
-                    HStack(spacing: cardSpacing) {
-                        ForEach(Array(tiers.enumerated()), id: \.offset) { index, tier in
-                            SubscriptionTierCard(
-                                tier: tier,
-                                isCurrentTier: isCurrentTier(tier.tier),
-                                onPurchase: {
-                                    if let product = tier.product {
-                                        selectedProduct = product
-                                        Task {
-                                            await purchaseProduct(product)
-                                        }
-                                    }
-                                }
-                            )
-                            .frame(width: cardWidth)
-                            .scaleEffect(index == currentIndex ? 1.0 : 0.92)
-                            .opacity(index == currentIndex ? 1.0 : 0.6)
-                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: currentIndex)
-                        }
+                        // Features
+                        featuresList
                     }
-                    .offset(x: totalOffset + dragOffset)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                dragOffset = value.translation.width
-                            }
-                            .onEnded { value in
-                                let threshold: CGFloat = 50
-                                var newIndex = currentIndex
-
-                                if value.translation.width < -threshold && currentIndex < tiers.count - 1 {
-                                    newIndex = currentIndex + 1
-                                } else if value.translation.width > threshold && currentIndex > 0 {
-                                    newIndex = currentIndex - 1
-                                }
-
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    currentIndex = newIndex
-                                    dragOffset = 0
-                                }
-
-                                HapticFeedback.light()
-                            }
-                    )
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
                 }
-                .frame(height: 480)
 
-                // Page Indicators
-                pageIndicators
-                    .padding(.top, 20)
-
-                Spacer()
-
-                // Footer
-                footerView
-                    .padding(.bottom, 32)
+                // Fixed bottom section with button
+                bottomSection
             }
-
-            // Close button
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        HapticFeedback.light()
+            .navigationTitle("Choose Your Plan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 32, height: 32)
-                            .glassEffect(in: .circle)
                     }
-                    .padding(.trailing, 20)
-                    .padding(.top, 16)
+                    .fontWeight(.medium)
                 }
-                Spacer()
             }
-
-            // Loading Overlay
-            if subscriptionService.isLoading {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-
-                VStack(spacing: 16) {
+            .overlay {
+                if subscriptionService.isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
                     ProgressView()
                         .scaleEffect(1.2)
-                        .tint(.goldAccent)
-
-                    Text("Processing...")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.primary)
+                        .tint(.white)
                 }
-                .padding(32)
-                .glassEffect(in: .rect(cornerRadius: 20))
             }
         }
         .task {
             await subscriptionService.fetchProducts()
         }
         .alert("Error", isPresented: .constant(subscriptionService.purchaseError != nil)) {
-            Button("OK") {
-                // Clear error
-            }
+            Button("OK") { }
         } message: {
             if let error = subscriptionService.purchaseError {
                 Text(error)
             }
         }
+        .fullScreenCover(isPresented: $showPremiumOnboarding, onDismiss: {
+            dismiss()
+        }) {
+            PremiumOnboardingView()
+                .environmentObject(authService)
+        }
     }
 
-    private var headerView: some View {
+    private var tierSelector: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(tiers.enumerated()), id: \.offset) { index, tier in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        selectedTierIndex = index
+                    }
+                    HapticFeedback.light()
+                } label: {
+                    Text(tier.name)
+                        .font(.system(size: 14, weight: selectedTierIndex == index ? .semibold : .medium))
+                        .foregroundColor(selectedTierIndex == index ? .primary : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            selectedTierIndex == index
+                                ? Color.primary.opacity(0.1)
+                                : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        .padding(3)
+        .background(Color.secondary.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var priceCard: some View {
+        VStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(selectedTier.price)
+                    .font(.system(size: 44, weight: .bold))
+                    .foregroundColor(.primary)
+
+                if selectedTier.period != "forever" {
+                    Text("/mo")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if selectedTier.tier != .free {
+                Text("Cancel anytime")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .glassEffect(in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(selectedTier.accentColor.opacity(0.3), lineWidth: selectedTierIndex > 0 ? 2 : 0)
+        )
+    }
+
+    private var featuresList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(selectedTier.features.enumerated()), id: \.offset) { index, feature in
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(selectedTier.accentColor)
+
+                    Text(feature)
+                        .font(.system(size: 15))
+                        .foregroundColor(.primary)
+
+                    Spacer()
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+
+                if index < selectedTier.features.count - 1 {
+                    Divider()
+                        .padding(.leading, 46)
+                }
+            }
+        }
+        .glassEffect(in: .rect(cornerRadius: 16))
+    }
+
+    private var bottomSection: some View {
         VStack(spacing: 12) {
-            Text(SparkSymbol.spark)
-                .font(.system(size: 44))
+            // Action button
+            actionButton
+                .padding(.horizontal, 20)
 
-            Text("Upgrade Your Learning")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundColor(.primary)
-
-            Text("Swipe to explore plans")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal)
-    }
-
-    private var pageIndicators: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<tiers.count, id: \.self) { index in
-                Capsule()
-                    .fill(index == currentIndex ? Color.goldAccent : Color.secondary.opacity(0.3))
-                    .frame(width: index == currentIndex ? 24 : 8, height: 8)
-                    .animation(.spring(response: 0.3), value: currentIndex)
-            }
-        }
-    }
-
-    private var footerView: some View {
-        VStack(spacing: 16) {
-            // Restore Purchases Button
-            Button {
-                Task {
-                    await restorePurchases()
+            // Footer links
+            HStack(spacing: 12) {
+                Button("Restore") {
+                    Task { await restorePurchases() }
                 }
-            } label: {
-                Text("Restore Purchases")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.goldAccent)
-            }
-
-            // Terms and Privacy
-            HStack(spacing: 20) {
-                Button("Terms") {
-                    // Open terms
-                }
-                .font(.caption)
+                .font(.caption.weight(.medium))
                 .foregroundColor(.secondary)
 
-                Text("•")
+                Text("·")
                     .foregroundColor(.secondary.opacity(0.5))
 
-                Text("Auto-renews monthly")
+                Text("Auto-renews")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Text("•")
+                Text("·")
                     .foregroundColor(.secondary.opacity(0.5))
 
-                Button("Privacy") {
-                    // Open privacy
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
+                Button("Terms") { }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("·")
+                    .foregroundColor(.secondary.opacity(0.5))
+
+                Button("Privacy") { }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+            .padding(.bottom, 16)
+        }
+        .padding(.top, 12)
+        .background(Color(UIColor.systemBackground))
+    }
+
+    @ViewBuilder
+    private var actionButton: some View {
+        let isCurrentTier = subscriptionService.currentTier == selectedTier.tier
+
+        if selectedTier.tier == .free {
+            if isCurrentTier {
+                currentPlanButton
+            } else {
+                // User has a paid subscription, let them manage it
+                manageSubscriptionButton
+            }
+        } else if selectedTier.product != nil {
+            if isCurrentTier {
+                currentPlanButton
+            } else {
+                Button {
+                    if let product = selectedTier.product {
+                        Task { await purchaseProduct(product) }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Subscribe to \(selectedTier.name)")
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(Color(UIColor.systemBackground))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
+        } else {
+            Text("Coming Soon")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.secondary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    private func isCurrentTier(_ tier: SubscriptionTier) -> Bool {
-        subscriptionService.currentTier == tier
+    private var currentPlanButton: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16))
+            Text("Current Plan")
+        }
+        .font(.system(size: 17, weight: .semibold))
+        .foregroundColor(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(Color.secondary.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var manageSubscriptionButton: some View {
+        Button {
+            openSubscriptionManagement()
+        } label: {
+            HStack(spacing: 8) {
+                Text("Manage Subscription")
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .font(.system(size: 17, weight: .medium))
+            .foregroundColor(.primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+
+    private func openSubscriptionManagement() {
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            UIApplication.shared.open(url)
+        }
     }
 
     private func purchaseProduct(_ product: Product) async {
         HapticFeedback.light()
         let success = await subscriptionService.purchase(product: product)
-
         if success {
             HapticFeedback.success()
-            dismiss()
+            // Show premium onboarding flow
+            showPremiumOnboarding = true
         } else {
             HapticFeedback.medium()
         }
@@ -277,195 +351,28 @@ struct SubscriptionView: View {
     private func restorePurchases() async {
         HapticFeedback.light()
         let success = await subscriptionService.restorePurchases()
-
         if success {
             HapticFeedback.success()
+            // If they restored a premium subscription, show onboarding
+            if subscriptionService.currentTier != .free {
+                showPremiumOnboarding = true
+            }
         } else {
             HapticFeedback.medium()
         }
     }
 }
 
-// MARK: - Tier Data Model
+// MARK: - Supporting Types
 
-struct TierData {
+struct TierInfo {
     let tier: SubscriptionTier
-    let title: String
+    let name: String
     let price: String
     let period: String
     let features: [String]
     let product: Product?
-    let isRecommended: Bool
-}
-
-// MARK: - Subscription Tier Card
-
-struct SubscriptionTierCard: View {
-    let tier: TierData
-    let isCurrentTier: Bool
-    let onPurchase: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Recommended Badge
-            if tier.isRecommended {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("BEST VALUE")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.goldAccent, Color.goldAccent.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                )
-                .offset(y: 14)
-                .zIndex(1)
-            }
-
-            // Card Content
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 8) {
-                    Text(tier.title)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(tier.isRecommended ? .goldAccent : .primary)
-
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(tier.price)
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundColor(.primary)
-
-                        Text("/ \(tier.period)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.top, tier.isRecommended ? 28 : 24)
-
-                // Divider
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.2))
-                    .frame(height: 1)
-                    .padding(.horizontal, 24)
-
-                // Features
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(tier.features, id: \.self) { feature in
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.secondary)
-                                .frame(width: 20, height: 20)
-                                .background(
-                                    Circle()
-                                        .fill(Color.secondary.opacity(0.15))
-                                )
-
-                            Text(feature)
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(.primary)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-
-                Spacer()
-
-                // Action Button
-                actionButton
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-            }
-            .frame(maxWidth: .infinity)
-            .glassEffect(in: .rect(cornerRadius: 24))
-            .overlay(
-                RoundedRectangle(cornerRadius: 24)
-                    .stroke(
-                        tier.isRecommended ? Color.goldAccent.opacity(0.5) : Color.clear,
-                        lineWidth: 2
-                    )
-            )
-        }
-    }
-
-    @ViewBuilder
-    private var actionButton: some View {
-        if tier.tier == .free {
-            if isCurrentTier {
-                currentPlanButton
-            } else {
-                // Free tier, not current - no button needed
-                EmptyView()
-            }
-        } else if tier.product != nil {
-            if isCurrentTier {
-                currentPlanButton
-            } else {
-                subscribeButton
-            }
-        } else {
-            comingSoonButton
-        }
-    }
-
-    private var subscribeButton: some View {
-        Button {
-            onPurchase()
-        } label: {
-            HStack(spacing: 8) {
-                Text("Subscribe")
-                    .font(.system(size: 17, weight: .semibold))
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                LinearGradient(
-                    colors: [Color.goldAccent, Color.goldAccent.opacity(0.85)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: RoundedRectangle(cornerRadius: 14)
-            )
-            .shadow(color: Color.goldAccent.opacity(0.3), radius: 8, x: 0, y: 4)
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-
-    private var currentPlanButton: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16))
-            Text("Current Plan")
-                .font(.system(size: 17, weight: .semibold))
-        }
-        .foregroundColor(.secondary)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private var comingSoonButton: some View {
-        Text("Coming Soon")
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundColor(.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-    }
+    let accentColor: Color
 }
 
 #Preview {

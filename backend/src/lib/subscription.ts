@@ -1,30 +1,69 @@
 import { User, SubscriptionTier } from './models';
 
+export type AutoProcessMode = 'none' | 'windows' | 'interval';
+
 export interface SubscriptionLimits {
   dailyNuggetLimit: number;
+  dailySwipeSessions: number; // -1 for unlimited
   hasAutoProcess: boolean;
   hasRSSSupport: boolean;
   hasPriorityProcessing: boolean;
+  // New premium feature limits
+  autoProcessMode: AutoProcessMode;
+  maxRSSFeeds: number;
+  maxCustomRSSFeeds: number; // Custom user-added feeds (Ultimate only)
+  hasCustomDigests: boolean;
+  hasOfflineMode: boolean;
+  hasReaderMode: boolean;
+  hasNotificationConfig: boolean;
+  maxFriends: number; // -1 for unlimited
 }
 
 export const SUBSCRIPTION_LIMITS: Record<SubscriptionTier, SubscriptionLimits> = {
   free: {
-    dailyNuggetLimit: 3,
+    dailyNuggetLimit: 5,
+    dailySwipeSessions: 3,
     hasAutoProcess: false,
     hasRSSSupport: false,
     hasPriorityProcessing: false,
+    autoProcessMode: 'none',
+    maxRSSFeeds: 0,
+    maxCustomRSSFeeds: 0,
+    hasCustomDigests: false,
+    hasOfflineMode: false,
+    hasReaderMode: false,
+    hasNotificationConfig: false,
+    maxFriends: 5,
   },
   pro: {
-    dailyNuggetLimit: 10,
+    dailyNuggetLimit: 50,
+    dailySwipeSessions: -1, // Unlimited
     hasAutoProcess: true,
     hasRSSSupport: true,
     hasPriorityProcessing: false,
+    autoProcessMode: 'windows', // Fixed 3x daily windows (morning, afternoon, evening)
+    maxRSSFeeds: 10,
+    maxCustomRSSFeeds: 0,
+    hasCustomDigests: false,
+    hasOfflineMode: false,
+    hasReaderMode: true,
+    hasNotificationConfig: false,
+    maxFriends: 25,
   },
   ultimate: {
-    dailyNuggetLimit: Number.MAX_SAFE_INTEGER,
+    dailyNuggetLimit: -1, // Unlimited
+    dailySwipeSessions: -1, // Unlimited
     hasAutoProcess: true,
     hasRSSSupport: true,
     hasPriorityProcessing: true,
+    autoProcessMode: 'interval', // User-configurable intervals (2, 4, 6, 8, 12 hours)
+    maxRSSFeeds: 50,
+    maxCustomRSSFeeds: 10,
+    hasCustomDigests: true,
+    hasOfflineMode: true,
+    hasReaderMode: true,
+    hasNotificationConfig: true,
+    maxFriends: -1, // Unlimited
   },
 };
 
@@ -172,3 +211,105 @@ export function shouldVerifyReceipt(user: User): boolean {
 
   return daysSinceLastVerification >= 1;
 }
+
+/**
+ * Get auto-process mode for user's tier
+ */
+export function getAutoProcessMode(user: User): AutoProcessMode {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.autoProcessMode;
+}
+
+/**
+ * Get max RSS feeds for user's tier
+ */
+export function getMaxRSSFeeds(user: User): number {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.maxRSSFeeds;
+}
+
+/**
+ * Check if user can create custom digests
+ */
+export function canCreateCustomDigests(user: User): boolean {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.hasCustomDigests;
+}
+
+/**
+ * Check if user has offline mode access
+ */
+export function hasOfflineModeAccess(user: User): boolean {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.hasOfflineMode;
+}
+
+/**
+ * Check if user has reader mode access
+ */
+export function hasReaderModeAccess(user: User): boolean {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.hasReaderMode;
+}
+
+/**
+ * Check if user can configure notifications
+ */
+export function canConfigureNotifications(user: User): boolean {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.hasNotificationConfig;
+}
+
+/**
+ * Get daily swipe session limit for user
+ */
+export function getDailySwipeSessionLimit(user: User): number {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.dailySwipeSessions;
+}
+
+/**
+ * Get max friends limit for user
+ */
+export function getMaxFriendsLimit(user: User): number {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.maxFriends;
+}
+
+/**
+ * Get max custom RSS feeds limit for user
+ */
+export function getMaxCustomRSSFeeds(user: User): number {
+  const tier = getEffectiveTier(user);
+  const limits = getLimitsForTier(tier);
+  return limits.maxCustomRSSFeeds;
+}
+
+/**
+ * Valid interval hours for Ultimate tier auto-processing
+ */
+export const VALID_INTERVAL_HOURS = [2, 4, 6, 8, 12] as const;
+
+/**
+ * Validate interval hours
+ */
+export function isValidIntervalHours(hours: number): boolean {
+  return VALID_INTERVAL_HOURS.includes(hours as typeof VALID_INTERVAL_HOURS[number]);
+}
+
+/**
+ * Pro tier processing windows (fixed times)
+ */
+export const PRO_PROCESSING_WINDOWS = {
+  morning: { hour: 7, minute: 30 },   // 7:30 AM
+  afternoon: { hour: 13, minute: 30 }, // 1:30 PM
+  evening: { hour: 19, minute: 30 },   // 7:30 PM
+} as const;

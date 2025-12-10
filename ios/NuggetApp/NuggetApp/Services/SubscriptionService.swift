@@ -202,6 +202,16 @@ final class SubscriptionService: ObservableObject {
     // MARK: - Check Subscription Status
 
     func checkSubscriptionStatus() async {
+        // TestFlight users get Ultimate for free during beta
+        if TestFlightHelper.isTestFlight {
+            await MainActor.run {
+                self.currentTier = .pro  // Ultimate tier
+                self.saveTierToUserDefaults(.pro)
+            }
+            print("✅ TestFlight build detected - granting Ultimate tier")
+            return
+        }
+
         var highestTier: SubscriptionTier = .free
         var latestTransaction: Transaction?
 

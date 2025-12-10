@@ -1,17 +1,17 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { extractUserId } from '../lib/auth';
-import { queryItems, putItem, updateItem, TableNames } from '../lib/dynamo';
-import { Nugget, Session, SessionResponse } from '../lib/models';
+import { queryItems, putItem, TableNames } from '../lib/dynamo';
+import { Nugget, Session, SessionResponse, NuggetResponse } from '../lib/models';
 
 interface SmartSessionRequest {
-  query: string; // Natural language query like "tech from this week"
-  limit?: number; // Max nuggets to process (default 5)
+  query: string; // Natural language query like "catch me up on tech"
+  limit?: number; // Max nuggets to return (default 10)
 }
 
 interface ParsedQuery {
   category?: string;
-  timeFilter?: 'today' | 'week' | 'month';
+  timeFilter?: 'today' | 'yesterday' | 'week' | 'month';
   contentType?: 'quick' | 'deep' | 'any';
 }
 
@@ -24,13 +24,15 @@ function parseQuery(query: string): ParsedQuery {
 
   // Detect categories
   const categories = {
-    tech: ['tech', 'technology', 'software', 'ai', 'coding'],
-    career: ['career', 'job', 'work', 'professional'],
-    finance: ['finance', 'money', 'market', 'investment', 'crypto'],
-    health: ['health', 'fitness', 'wellness', 'medical'],
-    science: ['science', 'research', 'study'],
-    business: ['business', 'startup', 'entrepreneur'],
-    sport: ['sport', 'sports', 'game', 'match'],
+    tech: ['tech', 'technology', 'software', 'ai', 'coding', 'programming', 'developer'],
+    career: ['career', 'job', 'work', 'professional', 'hiring'],
+    finance: ['finance', 'money', 'market', 'investment', 'crypto', 'stocks', 'trading'],
+    health: ['health', 'fitness', 'wellness', 'medical', 'nutrition'],
+    science: ['science', 'research', 'study', 'discovery'],
+    business: ['business', 'startup', 'entrepreneur', 'company'],
+    sport: ['sport', 'sports', 'game', 'match', 'football', 'soccer', 'basketball'],
+    news: ['news', 'headlines', 'breaking', 'current events'],
+    entertainment: ['entertainment', 'movies', 'music', 'tv', 'celebrity'],
   };
 
   for (const [category, keywords] of Object.entries(categories)) {
@@ -40,12 +42,14 @@ function parseQuery(query: string): ParsedQuery {
     }
   }
 
-  // Detect time filters
-  if (lowerQuery.includes('today') || lowerQuery.includes("today's")) {
+  // Detect time filters - check yesterday before today to avoid false matches
+  if (lowerQuery.includes('yesterday') || lowerQuery.includes("yesterday's")) {
+    parsed.timeFilter = 'yesterday';
+  } else if (lowerQuery.includes('today') || lowerQuery.includes("today's")) {
     parsed.timeFilter = 'today';
-  } else if (lowerQuery.includes('week') || lowerQuery.includes('weekly')) {
+  } else if (lowerQuery.includes('week') || lowerQuery.includes('weekly') || lowerQuery.includes('this week')) {
     parsed.timeFilter = 'week';
-  } else if (lowerQuery.includes('month') || lowerQuery.includes('monthly')) {
+  } else if (lowerQuery.includes('month') || lowerQuery.includes('monthly') || lowerQuery.includes('this month')) {
     parsed.timeFilter = 'month';
   }
 
@@ -60,71 +64,102 @@ function parseQuery(query: string): ParsedQuery {
 }
 
 /**
- * Filter nuggets based on parsed query
+ * Filter nuggets based on parsed query - only UNREAD PROCESSED nuggets
  */
 function filterNuggets(nuggets: Nugget[], query: ParsedQuery): Nugget[] {
   return nuggets.filter(nugget => {
-    // Only unprocessed nuggets
-    if (nugget.summary) return false;
+    // Only processed nuggets (have a summary)
+    if (!nugget.summary) return false;
+
+    // Only unread nuggets (timesReviewed === 0)
+    if (nugget.timesReviewed > 0) return false;
+
+    // Only inbox status
+    if (nugget.status !== 'inbox') return false;
 
     // Category filter
     if (query.category) {
-      // Check if nugget category matches
-      if (nugget.category !== query.category) {
-        // Also check title and description for category keywords
-        const content = `${nugget.rawTitle} ${nugget.rawDescription || ''}`.toLowerCase();
+      // Check if nugget category matches (case insensitive)
+      const nuggetCategory = nugget.category?.toLowerCase();
+      if (nuggetCategory !== query.category.toLowerCase()) {
+        // Also check title for category keywords as fallback
+        const title = (nugget.title || nugget.rawTitle || '').toLowerCase();
         const categoryKeywords = {
-          tech: ['tech', 'software', 'ai', 'app', 'digital'],
+          tech: ['tech', 'software', 'ai', 'app', 'digital', 'code'],
           career: ['career', 'job', 'work', 'hire', 'interview'],
-          finance: ['money', 'stock', 'invest', 'market', 'crypto'],
+          finance: ['money', 'stock', 'invest', 'market', 'crypto', 'finance'],
           health: ['health', 'fitness', 'medical', 'wellness'],
           science: ['science', 'research', 'study', 'discover'],
           business: ['business', 'company', 'startup', 'revenue'],
-          sport: ['sport', 'game', 'team', 'player', 'match'],
+          sport: ['sport', 'game', 'team', 'player', 'match', 'football', 'soccer'],
+          news: ['news', 'headline', 'breaking'],
+          entertainment: ['movie', 'music', 'tv', 'celebrity', 'entertainment'],
         };
 
         const keywords = categoryKeywords[query.category as keyof typeof categoryKeywords] || [];
-        if (!keywords.some(keyword => content.includes(keyword))) {
+        if (!keywords.some(keyword => title.includes(keyword))) {
           return false;
         }
       }
     }
 
-    // Time filter
+    // Time filter - use calendar days
     if (query.timeFilter) {
-      const now = Date.now() / 1000;
-      const nuggetAge = now - nugget.createdAt;
-      const day = 86400; // seconds in a day
+      const nuggetDate = new Date(nugget.createdAt * 1000);
+      const now = new Date();
+
+      // Get start of today (midnight)
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // Get start of yesterday
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+      // Get start of this week (Monday)
+      const weekStart = new Date(todayStart);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + (weekStart.getDay() === 0 ? -6 : 1));
+      // Get start of this month
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
       switch (query.timeFilter) {
         case 'today':
-          if (nuggetAge > day) return false;
+          if (nuggetDate < todayStart) return false;
+          break;
+        case 'yesterday':
+          // Nugget must be from yesterday or today (recent)
+          if (nuggetDate < yesterdayStart) return false;
           break;
         case 'week':
-          if (nuggetAge > day * 7) return false;
+          if (nuggetDate < weekStart) return false;
           break;
         case 'month':
-          if (nuggetAge > day * 30) return false;
-          break;
-      }
-    }
-
-    // Content type filter (estimate based on raw text length)
-    if (query.contentType && nugget.rawText) {
-      const wordCount = nugget.rawText.split(/\s+/).length;
-
-      switch (query.contentType) {
-        case 'quick':
-          if (wordCount > 500) return false;
-          break;
-        case 'deep':
-          if (wordCount < 500) return false;
+          if (nuggetDate < monthStart) return false;
           break;
       }
     }
 
     return true;
   });
+}
+
+/**
+ * Convert a Nugget to NuggetResponse format
+ */
+function toNuggetResponse(nugget: Nugget): NuggetResponse {
+  return {
+    nuggetId: nugget.nuggetId,
+    sourceUrl: nugget.sourceUrl,
+    sourceType: nugget.sourceType,
+    title: nugget.title || nugget.rawTitle || '',
+    category: nugget.category,
+    status: nugget.status,
+    createdAt: new Date(nugget.createdAt * 1000).toISOString(),
+    timesReviewed: nugget.timesReviewed,
+    summary: nugget.summary,
+    keyPoints: nugget.keyPoints,
+    question: nugget.question,
+    isGrouped: nugget.isGrouped,
+    sourceUrls: nugget.sourceUrls,
+    individualSummaries: nugget.individualSummaries,
+  };
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -154,12 +189,14 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
-    const limit = request.limit || 5;
+    const limit = request.limit || 10;
 
     // Parse the query
     const parsedQuery = parseQuery(request.query);
 
-    // Get all unprocessed nuggets for the user
+    console.log(`Smart session query: "${request.query}" -> parsed:`, parsedQuery);
+
+    // Get all nuggets for the user
     const nuggets = await queryItems<Nugget>({
       TableName: TableNames.nuggets,
       KeyConditionExpression: 'userId = :userId',
@@ -168,25 +205,46 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       },
     });
 
-    // Filter based on query
+    console.log(`Found ${nuggets.length} total nuggets for user`);
+
+    // Filter to unread processed nuggets matching the query
     const matchingNuggets = filterNuggets(nuggets, parsedQuery);
 
+    console.log(`Found ${matchingNuggets.length} matching unread processed nuggets`);
+
     if (matchingNuggets.length === 0) {
+      // Build a helpful message
+      let message = "You're all caught up!";
+      if (parsedQuery.category) {
+        message = `No unread ${parsedQuery.category} nuggets found.`;
+      }
+      if (parsedQuery.timeFilter) {
+        const timeLabel = parsedQuery.timeFilter === 'today' ? 'from today' :
+                         parsedQuery.timeFilter === 'yesterday' ? 'from yesterday' :
+                         parsedQuery.timeFilter === 'week' ? 'this week' :
+                         'this month';
+        message = `No unread nuggets ${timeLabel}${parsedQuery.category ? ` in ${parsedQuery.category}` : ''}.`;
+      }
+
       return {
-        statusCode: 404,
+        statusCode: 200,
         body: JSON.stringify({
-          error: 'No matching unprocessed content found',
-          suggestion: 'Try a broader query or save more content first'
+          sessionId: null,
+          nuggets: [],
+          message,
+          query: request.query,
+          parsed: parsedQuery,
+          totalMatches: 0,
         }),
       };
     }
 
-    // Sort by priority and take the limit
-    const nuggetsToProcess = matchingNuggets
-      .sort((a, b) => b.priorityScore - a.priorityScore)
+    // Sort by creation date (newest first) and take the limit
+    const nuggetsToReturn = matchingNuggets
+      .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, limit);
 
-    // Create session
+    // Create a session for tracking
     const sessionId = uuidv4();
     const now = Date.now() / 1000;
     const today = new Date().toISOString().split('T')[0];
@@ -196,121 +254,18 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       sessionId,
       date: today,
       startedAt: now,
-      nuggetIds: nuggetsToProcess.map(n => n.nuggetId),
+      nuggetIds: nuggetsToReturn.map(n => n.nuggetId),
       completedCount: 0,
     };
 
     await putItem(TableNames.sessions, session);
 
-    // DON'T process individual nuggets - we want only the grouped nugget
-    // Mark the original nuggets as being part of a session so they don't show as unprocessed
-    const updatePromises = nuggetsToProcess.map(nugget =>
-      updateItem(
-        TableNames.nuggets,
-        { userId, nuggetId: nugget.nuggetId },
-        {
-          status: 'archived', // Archive them since they're now part of a grouped session
-          sessionId: sessionId
-        }
-      )
-    );
-
-    await Promise.all(updatePromises);
-
-    // For now, just use the nuggets as-is without processing
-    const validUpdatedNuggets = nuggetsToProcess;
-
-    // Group the nuggets into a combined session
-    // This creates a single "super nugget" that contains all the matched articles
-    const groupedNuggetId = `group-${sessionId}`;
-
-    // Generate a better title for the grouped nugget
-    let groupTitle = request.query;
-    if (parsedQuery.category && parsedQuery.timeFilter) {
-      const timeLabel = parsedQuery.timeFilter === 'today' ? "Today's" :
-                       parsedQuery.timeFilter === 'week' ? 'This Week in' :
-                       'This Month in';
-      groupTitle = `${timeLabel} ${parsedQuery.category.charAt(0).toUpperCase() + parsedQuery.category.slice(1)}`;
-    }
-
-    // Create and save the grouped nugget to the database immediately
-    const groupedNugget: Nugget = {
-      userId,
-      nuggetId: groupedNuggetId,
-      sourceUrl: '', // No single source for grouped nuggets
-      sourceType: 'other',
-      title: groupTitle,
-      rawTitle: groupTitle,
-      category: parsedQuery.category || 'mixed',
-      status: 'inbox', // Mark as inbox since it's ready to be processed
-      createdAt: now,
-      priorityScore: 100, // High priority for grouped nuggets
-      timesReviewed: 0,
-      processingState: 'ready', // Mark as ready since it's a grouped nugget
-      // Mark as grouped and include all source URLs
-      isGrouped: true,
-      sourceUrls: validUpdatedNuggets.map(n => n.sourceUrl),
-      // Create a richer, more detailed summary
-      summary: `You have ${validUpdatedNuggets.length} curated articles matching "${request.query}". This collection covers ${
-        parsedQuery.category ? `the latest in ${parsedQuery.category}` : 'diverse topics'
-      }${parsedQuery.timeFilter ? ` from ${parsedQuery.timeFilter === 'today' ? 'today' :
-        parsedQuery.timeFilter === 'week' ? 'this week' : 'this month'}` : ''
-      }. Here's your personalized digest with key insights, trends, and actionable takeaways from each article.`,
-      keyPoints: validUpdatedNuggets.map(n => {
-        const title = n.rawTitle || 'Untitled';
-        const description = n.rawDescription ? ` - ${n.rawDescription.substring(0, 100)}...` : '';
-        return `${title}${description}`;
-      }),
-      question: `Which aspect of ${parsedQuery.category || 'these topics'} interests you most?`,
-      // Include individual summaries for each article (even if they're not processed yet)
-      individualSummaries: validUpdatedNuggets.map(nugget => {
-        const title = nugget.title || nugget.rawTitle || 'Untitled';
-        const description = nugget.rawDescription || '';
-        let summary = nugget.summary;
-
-        // Create a more detailed summary if one doesn't exist
-        if (!summary && description) {
-          summary = `${description.substring(0, 200)}${description.length > 200 ? '...' : ''}`;
-        } else if (!summary) {
-          summary = `Article: "${title}" - Ready for in-depth analysis`;
-        }
-
-        return {
-          nuggetId: nugget.nuggetId,
-          title: title,
-          sourceUrl: nugget.sourceUrl,
-          summary: summary,
-          keyPoints: nugget.keyPoints || (description ? [
-            `Source: ${nugget.sourceUrl.includes('linkedin') ? 'LinkedIn' :
-                     nugget.sourceUrl.includes('twitter') ? 'Twitter/X' :
-                     new URL(nugget.sourceUrl).hostname.replace('www.', '')}`,
-            `Topic: ${nugget.category || 'General'}`
-          ] : []),
-        };
-      }),
-    };
-
-    // Save the grouped nugget to the database immediately
-    await putItem(TableNames.nuggets, groupedNugget);
+    // Convert nuggets to response format
+    const nuggetResponses = nuggetsToReturn.map(toNuggetResponse);
 
     const response: SessionResponse = {
       sessionId: session.sessionId,
-      nuggets: [{
-        nuggetId: groupedNugget.nuggetId,
-        sourceUrl: groupedNugget.sourceUrl,
-        sourceType: 'grouped',
-        title: groupedNugget.title || '',
-        category: groupedNugget.category,
-        status: 'ready',
-        createdAt: new Date(groupedNugget.createdAt * 1000).toISOString(),
-        timesReviewed: 0,
-        isGrouped: true,
-        sourceUrls: groupedNugget.sourceUrls,
-        summary: groupedNugget.summary,
-        keyPoints: groupedNugget.keyPoints,
-        question: groupedNugget.question,
-        individualSummaries: groupedNugget.individualSummaries,
-      }],
+      nuggets: nuggetResponses,
     };
 
     return {
@@ -320,7 +275,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         query: request.query,
         parsed: parsedQuery,
         totalMatches: matchingNuggets.length,
-        processed: nuggetsToProcess.length,
+        returned: nuggetsToReturn.length,
       }),
     };
   } catch (error) {

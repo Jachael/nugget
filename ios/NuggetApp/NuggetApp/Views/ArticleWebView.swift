@@ -1,12 +1,21 @@
 import SwiftUI
 import WebKit
+import SafariServices
 
 struct ArticleWebView: View {
     let url: URL
     let title: String?
+    @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) var dismiss
     @State private var webPage = WebPage()
     @State private var hasLoaded = false
+    @State private var showSafariReader = false
+    @AppStorage("readerModeByDefault") private var readerModeByDefault = true
+
+    private var isPremiumUser: Bool {
+        let tier = authService.currentUser?.subscriptionTier ?? "free"
+        return tier == "pro" || tier == "ultimate"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,6 +51,18 @@ struct ArticleWebView: View {
                 if webPage.isLoading {
                     ProgressView()
                         .scaleEffect(0.8)
+                }
+
+                // Reader Mode Button (Pro+ only) - opens in Safari Reader
+                if isPremiumUser {
+                    Button {
+                        showSafariReader = true
+                    } label: {
+                        Image(systemName: "doc.plaintext")
+                            .font(.title3)
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(GlassButtonStyle())
                 }
 
                 ShareLink(item: url) {
@@ -81,5 +102,29 @@ struct ArticleWebView: View {
                     webPage.stopLoading()
                 }
         }
+        .fullScreenCover(isPresented: $showSafariReader) {
+            SafariReaderView(url: url)
+        }
+        .onAppear {
+            // Auto-open Safari Reader for premium users if setting is enabled
+            if isPremiumUser && readerModeByDefault && !showSafariReader {
+                showSafariReader = true
+            }
+        }
     }
+}
+
+// MARK: - Safari Reader View
+
+struct SafariReaderView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = true
+        let safari = SFSafariViewController(url: url, configuration: config)
+        return safari
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }

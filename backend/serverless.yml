@@ -16,6 +16,14 @@ provider:
     NUGGET_SCHEDULES_TABLE: ${self:service}-schedules-${self:provider.stage}
     NUGGET_DEVICE_TOKENS_TABLE: ${self:service}-device-tokens-${self:provider.stage}
     NUGGET_FEEDS_TABLE: ${self:service}-feeds-${self:provider.stage}
+    NUGGET_FETCHED_ARTICLES_TABLE: ${self:service}-fetched-articles-${self:provider.stage}
+    NUGGET_CUSTOM_DIGESTS_TABLE: ${self:service}-custom-digests-${self:provider.stage}
+    NUGGET_SHARED_NUGGETS_TABLE: ${self:service}-shared-nuggets-${self:provider.stage}
+    NUGGET_WAITLIST_TABLE: ${self:service}-waitlist-${self:provider.stage}
+    NUGGET_FEEDBACK_TABLE: ${self:service}-feedback-${self:provider.stage}
+    NUGGET_FEEDBACK_VOTES_TABLE: ${self:service}-feedback-votes-${self:provider.stage}
+    NUGGET_CUSTOM_FEEDS_TABLE: ${self:service}-custom-feeds-${self:provider.stage}
+    NUGGET_FRIEND_SHARED_NUGGETS_TABLE: ${self:service}-friend-shared-nuggets-${self:provider.stage}
     JWT_SECRET: ${env:JWT_SECRET, 'dev-secret-change-in-production'}
     STAGE: ${self:provider.stage}
     COGNITO_USER_POOL_ID: eu-west-1_1zILS9mOj
@@ -23,7 +31,7 @@ provider:
     USE_COGNITO: 'true'
     APPLE_CLIENT_ID: NuggetApp
     GOOGLE_CLIENT_ID: ${env:GOOGLE_CLIENT_ID, ''}
-    IOS_PLATFORM_APPLICATION_ARN: ${env:IOS_PLATFORM_APPLICATION_ARN, ''}
+    IOS_PLATFORM_APPLICATION_ARN: ${env:IOS_PLATFORM_APPLICATION_ARN, 'arn:aws:sns:eu-west-1:851725413603:app/APNS_SANDBOX/NuggetApp-iOS-Sandbox'}
     ANDROID_PLATFORM_APPLICATION_ARN: ${env:ANDROID_PLATFORM_APPLICATION_ARN, ''}
     AWS_ACCOUNT_ID: ${aws:accountId}
     EVENTBRIDGE_SCHEDULER_ROLE_ARN: !GetAtt EventBridgeSchedulerRole.Arn
@@ -46,6 +54,14 @@ provider:
             - !GetAtt SchedulesTable.Arn
             - !GetAtt DeviceTokensTable.Arn
             - !GetAtt FeedsTable.Arn
+            - !GetAtt FetchedArticlesTable.Arn
+            - !GetAtt CustomDigestsTable.Arn
+            - !GetAtt SharedNuggetsTable.Arn
+            - !GetAtt WaitlistTable.Arn
+            - !GetAtt FeedbackTable.Arn
+            - !GetAtt FeedbackVotesTable.Arn
+            - !GetAtt CustomFeedsTable.Arn
+            - !GetAtt FriendSharedNuggetsTable.Arn
             - !Sub '${NuggetsTable.Arn}/index/*'
         - Effect: Allow
           Action:
@@ -58,6 +74,8 @@ provider:
             - lambda:InvokeFunction
           Resource:
             - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-summariseNugget'
+            - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-autoFetchFeeds'
+            - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-fetchFeedContentWorker'
         - Effect: Allow
           Action:
             - scheduler:CreateSchedule
@@ -66,6 +84,7 @@ provider:
             - scheduler:GetSchedule
           Resource:
             - !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/nugget-auto-process-*'
+            - !Sub 'arn:aws:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/nugget-feed-fetch-*'
         - Effect: Allow
           Action:
             - sns:CreatePlatformEndpoint
@@ -80,6 +99,12 @@ provider:
             - iam:PassRole
           Resource:
             - !GetAtt EventBridgeSchedulerRole.Arn
+        - Effect: Allow
+          Action:
+            - ses:SendEmail
+            - ses:SendRawEmail
+          Resource:
+            - '*'
 
 functions:
   authApple:
@@ -152,6 +177,14 @@ functions:
           path: /v1/nuggets/{nuggetId}
           method: delete
 
+  batchDeleteNuggets:
+    handler: dist/handlers/batchDeleteNuggets.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/nuggets/batch-delete
+          method: post
+
   startSession:
     handler: dist/handlers/startSession.handler
     events:
@@ -172,6 +205,13 @@ functions:
     events:
       - httpApi:
           path: /v1/sessions/{sessionId}/complete
+          method: post
+
+  markNuggetsRead:
+    handler: dist/handlers/markNuggetsRead.handler
+    events:
+      - httpApi:
+          path: /v1/nuggets/mark-read
           method: post
 
   getSessionStatus:
@@ -214,6 +254,22 @@ functions:
           path: /v1/subscriptions/verify
           method: post
 
+  shareNugget:
+    handler: dist/handlers/shareNugget.handler
+    timeout: 10
+    events:
+      - httpApi:
+          path: /v1/nuggets/{nuggetId}/share
+          method: post
+
+  getSharedNugget:
+    handler: dist/handlers/shareNugget.getSharedNuggetHandler
+    timeout: 10
+    events:
+      - httpApi:
+          path: /v1/shared/{shareId}
+          method: get
+
   setProcessingSchedule:
     handler: dist/handlers/setProcessingSchedule.handler
     timeout: 30
@@ -222,8 +278,21 @@ functions:
           path: /v1/processing/schedule
           method: post
 
+  getProcessingSchedule:
+    handler: dist/handlers/setProcessingSchedule.getScheduleHandler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/processing/schedule
+          method: get
+
   autoProcessNuggets:
     handler: dist/handlers/autoProcessNuggets.handler
+    timeout: 300
+    # Invoked by EventBridge Scheduler - no HTTP events
+
+  autoFetchFeeds:
+    handler: dist/handlers/autoFetchFeeds.handler
     timeout: 300
     # Invoked by EventBridge Scheduler - no HTTP events
 
@@ -232,6 +301,13 @@ functions:
     events:
       - httpApi:
           path: /v1/device/register
+          method: post
+
+  testNotification:
+    handler: dist/handlers/testNotification.handler
+    events:
+      - httpApi:
+          path: /v1/notifications/test
           method: post
 
   getFeeds:
@@ -250,10 +326,179 @@ functions:
 
   fetchFeedContent:
     handler: dist/handlers/fetchFeedContent.handler
-    timeout: 60
+    timeout: 30
     events:
       - httpApi:
           path: /v1/feeds/fetch
+          method: post
+
+  fetchFeedContentWorker:
+    handler: dist/handlers/fetchFeedContentWorker.handler
+    timeout: 300
+    # No HTTP events - invoked async by fetchFeedContent
+
+  triggerFeedFetch:
+    handler: dist/handlers/triggerFeedFetch.handler
+    timeout: 300
+    events:
+      - httpApi:
+          path: /v1/feeds/fetch-all
+          method: post
+
+  manageDigests:
+    handler: dist/handlers/manageDigests.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/digests
+          method: post
+      - httpApi:
+          path: /v1/digests
+          method: get
+      - httpApi:
+          path: /v1/digests/{digestId}
+          method: put
+      - httpApi:
+          path: /v1/digests/{digestId}
+          method: delete
+
+  updateUserSettings:
+    handler: dist/handlers/updateUserSettings.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/settings
+          method: put
+
+  getUserSettings:
+    handler: dist/handlers/updateUserSettings.getSettingsHandler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/settings
+          method: get
+
+  contactForm:
+    handler: dist/handlers/contactForm.handler
+    timeout: 10
+    environment:
+      CONTACT_EMAIL: ${env:CONTACT_EMAIL, 'contact@nuggetdotcom.com'}
+    events:
+      - httpApi:
+          path: /v1/contact
+          method: post
+      - httpApi:
+          path: /v1/contact
+          method: options
+
+  getUsage:
+    handler: dist/handlers/usage.handler
+    events:
+      - httpApi:
+          path: /v1/usage
+          method: get
+
+  waitlist:
+    handler: dist/handlers/waitlist.handler
+    timeout: 10
+    events:
+      - httpApi:
+          path: /v1/waitlist
+          method: post
+      - httpApi:
+          path: /v1/waitlist
+          method: options
+      - httpApi:
+          path: /v1/waitlist/admin
+          method: get
+      - httpApi:
+          path: /v1/waitlist/admin/{email}
+          method: put
+
+  friends:
+    handler: dist/handlers/friends.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/friends
+          method: get
+      - httpApi:
+          path: /v1/friends/code
+          method: get
+      - httpApi:
+          path: /v1/friends/add
+          method: post
+      - httpApi:
+          path: /v1/friends/requests
+          method: get
+      - httpApi:
+          path: /v1/friends/requests/{requestId}/accept
+          method: post
+      - httpApi:
+          path: /v1/friends/requests/{requestId}/decline
+          method: post
+      - httpApi:
+          path: /v1/friends/{friendId}
+          method: delete
+
+  feedback:
+    handler: dist/handlers/feedback.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/feedback
+          method: post
+      - httpApi:
+          path: /v1/feedback
+          method: get
+      - httpApi:
+          path: /v1/feedback/{feedbackId}
+          method: get
+      - httpApi:
+          path: /v1/feedback/{feedbackId}/vote
+          method: post
+      - httpApi:
+          path: /v1/feedback/{feedbackId}
+          method: put
+      - httpApi:
+          path: /v1/feedback
+          method: options
+      - httpApi:
+          path: /v1/feedback/{feedbackId}
+          method: options
+      - httpApi:
+          path: /v1/feedback/{feedbackId}/vote
+          method: options
+
+  customFeeds:
+    handler: dist/handlers/customFeeds.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/feeds/custom
+          method: post
+      - httpApi:
+          path: /v1/feeds/custom
+          method: get
+      - httpApi:
+          path: /v1/feeds/custom/{feedId}
+          method: delete
+      - httpApi:
+          path: /v1/feeds/custom/validate
+          method: post
+
+  shareToFriend:
+    handler: dist/handlers/shareToFriend.handler
+    timeout: 30
+    events:
+      - httpApi:
+          path: /v1/nuggets/{nuggetId}/share-to-friends
+          method: post
+      - httpApi:
+          path: /v1/shared-with-me
+          method: get
+      - httpApi:
+          path: /v1/shared-with-me/{shareId}/read
           method: post
 
 resources:
@@ -371,6 +616,128 @@ resources:
           - AttributeName: feedId
             KeyType: RANGE
 
+    FetchedArticlesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_FETCHED_ARTICLES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: articleId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: articleId
+            KeyType: RANGE
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    CustomDigestsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_CUSTOM_DIGESTS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: digestId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: digestId
+            KeyType: RANGE
+
+    SharedNuggetsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_SHARED_NUGGETS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: shareId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: shareId
+            KeyType: HASH
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
+
+    WaitlistTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_WAITLIST_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: email
+            KeyType: HASH
+
+    FeedbackTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_FEEDBACK_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: feedbackId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: feedbackId
+            KeyType: HASH
+
+    FeedbackVotesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_FEEDBACK_VOTES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: feedbackId
+            AttributeType: S
+          - AttributeName: odinguserId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: feedbackId
+            KeyType: HASH
+          - AttributeName: odinguserId
+            KeyType: RANGE
+
+    CustomFeedsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_CUSTOM_FEEDS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: feedId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: feedId
+            KeyType: RANGE
+
+    FriendSharedNuggetsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.NUGGET_FRIEND_SHARED_NUGGETS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: recipientUserId
+            AttributeType: S
+          - AttributeName: shareId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: recipientUserId
+            KeyType: HASH
+          - AttributeName: shareId
+            KeyType: RANGE
+
     # IAM role for EventBridge Scheduler to invoke Lambda
     EventBridgeSchedulerRole:
       Type: AWS::IAM::Role
@@ -393,6 +760,7 @@ resources:
                     - lambda:InvokeFunction
                   Resource:
                     - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-autoProcessNuggets'
+                    - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${self:service}-${self:provider.stage}-autoFetchFeeds'
 
 plugins:
   - serverless-offline

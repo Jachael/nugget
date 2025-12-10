@@ -188,10 +188,10 @@ function buildNotificationMessage(
 ): Record<string, string> {
   const { title, body, data = {}, badge, sound = 'default', category } = payload;
 
-  // Add notification type to data
+  // Add notification type to data (custom type in data takes priority)
   const extendedData = {
-    ...data,
-    type: notificationType,
+    type: notificationType,  // Default to notification type
+    ...data,                  // Custom data.type will override if present
   };
 
   if (platform === 'ios') {
@@ -245,8 +245,8 @@ export async function sendNuggetsReadyNotification(
   nuggetCount: number
 ): Promise<void> {
   const payload: PushNotificationPayload = {
-    title: 'Your Nuggets are Ready!',
-    body: `${nuggetCount} new nugget${nuggetCount > 1 ? 's are' : ' is'} ready to review`,
+    title: 'New Nuggets Ready!',
+    body: 'You have new content ready to review',
     category: NotificationType.NUGGETS_READY,
     badge: nuggetCount,
     data: {

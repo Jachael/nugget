@@ -61,6 +61,7 @@ struct NuggetApp: App {
     @State private var preferences: UserPreferences?
     @State private var isLoadingPreferences = true
     @State private var showTutorial = false
+    @State private var showBetaWelcome = false
     @AppStorage("colorScheme") private var colorScheme: String = "system"
     @AppStorage("hasSeenTutorial") private var hasSeenTutorial = false
     @Environment(\.scenePhase) private var scenePhase
@@ -76,11 +77,24 @@ struct NuggetApp: App {
                         .task {
                             await loadPreferencesAndDataAsync()
                         }
+                } else if showBetaWelcome {
+                    BetaWelcomeView(userName: authService.currentUser?.firstName ?? "Beta Tester") {
+                        TestFlightHelper.markBetaWelcomeSeen()
+                        withAnimation {
+                            showBetaWelcome = false
+                        }
+                    }
                 } else {
                     MainTabView()
                         .environmentObject(authService)
                         .sheet(isPresented: $showTutorial) {
                             TutorialView()
+                                .onDisappear {
+                                    // After tutorial dismisses, check if we should show beta welcome
+                                    if TestFlightHelper.shouldShowBetaWelcome {
+                                        showBetaWelcome = true
+                                    }
+                                }
                         }
                 }
             }
@@ -94,6 +108,9 @@ struct NuggetApp: App {
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 // Process pending shared nuggets when app becomes active
                 if newPhase == .active && authService.isAuthenticated {
+                    // Clear badge when app becomes active
+                    UNUserNotificationCenter.current().setBadgeCount(0)
+
                     Task {
                         do {
                             let processed = try await NuggetService.shared.processPendingSharedNuggets()
@@ -143,6 +160,9 @@ struct NuggetApp: App {
                         // Show tutorial if user hasn't seen it yet
                         if !self.hasSeenTutorial {
                             self.showTutorial = true
+                        } else if TestFlightHelper.shouldShowBetaWelcome {
+                            // Show beta welcome for returning TestFlight users
+                            self.showBetaWelcome = true
                         }
                     }
                 } catch {
@@ -152,6 +172,9 @@ struct NuggetApp: App {
                         // Show tutorial if preferences don't exist
                         if !self.hasSeenTutorial {
                             self.showTutorial = true
+                        } else if TestFlightHelper.shouldShowBetaWelcome {
+                            // Show beta welcome for returning TestFlight users
+                            self.showBetaWelcome = true
                         }
                     }
                     print("Error loading preferences: \(error)")

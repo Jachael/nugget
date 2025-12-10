@@ -8,6 +8,37 @@ export interface UserPreferences {
   categoryWeights?: Record<string, number>; // For premium: preference weighting
 }
 
+// User Settings for notifications and premium features
+export interface UserSettings {
+  notificationsEnabled?: boolean;
+  // Notification preferences (Ultimate only)
+  notifyOnAllNuggets?: boolean;
+  notifyCategories?: string[]; // e.g., ["technology", "sport"]
+  notifyFeeds?: string[]; // e.g., ["techcrunch", "hackernews"]
+  notifyDigests?: string[]; // e.g., ["digest-123"]
+  // Reader mode preference (Ultimate only)
+  readerModeEnabled?: boolean;
+  // Offline settings (Ultimate only)
+  offlineEnabled?: boolean;
+  offlineLimitMB?: number;
+}
+
+// Daily usage tracking
+export interface DailyUsage {
+  date: string; // YYYY-MM-DD format (UTC)
+  nuggetsCreated: number;
+  swipeSessionsStarted: number;
+}
+
+// Friend request model
+export interface FriendRequest {
+  requestId: string;
+  fromUserId: string;
+  fromDisplayName?: string;
+  requestedAt: number;
+  status: 'pending' | 'accepted' | 'declined';
+}
+
 export interface User {
   userId: string;
   appleSub?: string;
@@ -23,7 +54,7 @@ export interface User {
   streak: number;
   preferences?: UserPreferences;
   onboardingCompleted?: boolean;
-  settings?: Record<string, unknown>;
+  settings?: UserSettings;
   // Subscription fields
   subscriptionTier?: SubscriptionTier;
   subscriptionExpiresAt?: string; // ISO date string
@@ -32,18 +63,24 @@ export interface User {
   // Auto-processing fields
   autoProcessEnabled?: boolean;
   processingScheduleId?: string;
+  // Usage tracking (for free tier limits)
+  dailyUsage?: DailyUsage;
+  // Friends feature
+  friendCode?: string; // 8-char unique code for adding friends
+  friends?: string[]; // Array of friend userIds
+  friendRequests?: FriendRequest[]; // Pending friend requests
 }
 
 export interface Nugget {
   userId: string;
   nuggetId: string;
   sourceUrl: string;
-  sourceType: 'url' | 'tweet' | 'linkedin' | 'youtube' | 'other';
+  sourceType: 'url' | 'tweet' | 'linkedin' | 'youtube' | 'rss' | 'other';
   rawTitle?: string;
   title?: string; // Processed/cleaned title
   rawText?: string;
   rawDescription?: string; // Meta description from scraping
-  status: 'inbox' | 'completed' | 'archived';
+  status: 'inbox' | 'digest' | 'completed' | 'archived';
   processingState: 'scraped' | 'processing' | 'ready'; // New: track AI processing state
   category?: string;
   summary?: string;
@@ -246,17 +283,22 @@ export interface GetFeedsResponse {
 }
 
 // Processing Schedule Models
+export type ProcessingMode = 'windows' | 'interval';
+
 export interface ProcessingSchedule {
   userId: string;
   scheduleId: string;
-  frequency: 'daily' | 'twice_daily' | 'weekly';
-  preferredTime: string; // "09:00" format
+  frequency: 'daily' | 'twice_daily' | 'weekly' | 'interval';
+  preferredTime: string; // "09:00" format (used for windows start time)
   timezone: string;
   enabled: boolean;
   lastRun?: string;
   nextRun?: string;
   createdAt: number;
   updatedAt: number;
+  // New fields for tier-based processing
+  processingMode?: ProcessingMode; // 'windows' for Pro, 'interval' for Ultimate
+  intervalHours?: number; // 2, 4, 6, 8, or 12 hours (Ultimate only)
 }
 
 // Device Token Models
@@ -267,4 +309,131 @@ export interface DeviceToken {
   endpointArn?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+// Fetched Article Tracking (for RSS deduplication)
+export interface FetchedArticle {
+  userId: string;
+  articleId: string; // guid or hash of sourceUrl
+  rssFeedId: string;
+  sourceUrl: string;
+  guid?: string;
+  fetchedAt: number;
+  nuggetId?: string; // If converted to nugget
+  ttl: number; // TTL for auto-deletion (30 days)
+}
+
+// Custom Digest (Ultimate Only)
+// Digest frequency options
+export type DigestFrequency = 'with_schedule' | 'once_daily' | 'twice_daily' | 'three_times_daily';
+
+export interface CustomDigest {
+  userId: string;
+  digestId: string;
+  name: string; // User-defined name like "My Tech Roundup"
+  feedIds: string[]; // Array of rssFeedId to combine
+  createdAt: number;
+  updatedAt: number;
+  lastGeneratedAt?: number;
+  isEnabled: boolean;
+  // Configuration options
+  articlesPerDigest?: number; // How many articles to include (default: 5)
+  frequency?: DigestFrequency; // How often to generate (default: with_schedule)
+}
+
+// API Input/Response for Custom Digests
+export interface CreateDigestInput {
+  name: string;
+  feedIds: string[];
+  articlesPerDigest?: number;
+  frequency?: DigestFrequency;
+}
+
+export interface UpdateDigestInput {
+  name?: string;
+  feedIds?: string[];
+  isEnabled?: boolean;
+  articlesPerDigest?: number;
+  frequency?: DigestFrequency;
+}
+
+export interface DigestResponse {
+  digestId: string;
+  name: string;
+  feedIds: string[];
+  isEnabled: boolean;
+  lastGeneratedAt?: string;
+  createdAt: string;
+  articlesPerDigest: number;
+  frequency: DigestFrequency;
+}
+
+// API Input/Response for User Settings
+export interface UpdateUserSettingsInput {
+  notificationsEnabled?: boolean;
+  notifyOnAllNuggets?: boolean;
+  notifyCategories?: string[];
+  notifyFeeds?: string[];
+  notifyDigests?: string[];
+  readerModeEnabled?: boolean;
+  offlineEnabled?: boolean;
+}
+
+// Waitlist for TestFlight beta
+export interface WaitlistEntry {
+  email: string; // PK
+  signedUpAt: number;
+  status: 'pending' | 'invited' | 'joined';
+  invitedAt?: number;
+  source?: string; // 'landing', 'referral', etc.
+}
+
+// Feedback system
+export interface FeedbackItem {
+  feedbackId: string; // PK
+  userId: string;
+  userDisplayName?: string;
+  title: string;
+  description: string;
+  category: 'feature' | 'bug' | 'improvement';
+  status: 'open' | 'planned' | 'in-progress' | 'completed' | 'declined';
+  voteCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FeedbackVote {
+  feedbackId: string; // PK
+  odinguserId: string; // SK
+  votedAt: number;
+}
+
+// Custom RSS Feeds (Ultimate only)
+export interface CustomRSSFeed {
+  userId: string; // PK
+  feedId: string; // SK
+  url: string;
+  name: string;
+  description?: string;
+  iconUrl?: string;
+  category?: string;
+  createdAt: number;
+  lastFetchedAt?: number;
+  isValid: boolean;
+}
+
+// Friend-shared nuggets (nuggets shared between friends)
+export interface FriendSharedNugget {
+  recipientUserId: string; // PK - who receives the share
+  shareId: string; // SK - unique share ID
+  nuggetId: string;
+  senderUserId: string;
+  senderDisplayName: string;
+  sharedAt: number;
+  isRead: boolean;
+  // Denormalized nugget data for display
+  nuggetTitle?: string;
+  nuggetSummary?: string;
+  nuggetSourceUrl?: string;
+  nuggetCategory?: string;
 }
